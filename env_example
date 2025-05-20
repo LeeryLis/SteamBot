@@ -1,4 +1,4 @@
----[ Create your own .env file with its own data ]---
+---[ Create your own .env file with your own data ]---
 
 API_KEY = ""
 STEAM_ID = ""
