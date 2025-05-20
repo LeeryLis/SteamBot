@@ -33,5 +33,8 @@ class BasicFileManager(ABC):
         pass
 
     def save_items(self) -> None:
+        dir_path = os.path.dirname(self.file_path)
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path)
         with open(self.file_path, 'w', encoding='utf-8') as file:
             json.dump(self.items, file, ensure_ascii=False, indent=4)

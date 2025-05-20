@@ -26,12 +26,12 @@ class ConsoleGameIDManager(BasicConsole):
                 "-all": Param(
                     description="Выводит все элементы",
                     action=lambda: self.original.items,
-                    param_type=ParamType.ARG_MODIFY
+                    param_type=ParamType.LOGIC
                 ),
                 "-name": Param(
                     description="Выводит имена элементов",
                     action=lambda: list(self.original.items.keys()),
-                    param_type=ParamType.ARG_MODIFY
+                    param_type=ParamType.LOGIC
                 )
             }
         )

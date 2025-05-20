@@ -276,6 +276,9 @@ class TradeUserInterface(BasicConsole):
         return Text("Cookies loaded successfully")
 
     def _save_cookies(self) -> Text:
+        dir_path = os.path.dirname(self.cookies_filename)
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path)
         with open(self.cookies_filename, 'wb') as f:
             pickle.dump(self.session.cookies, f)
         with open(self.steam_id_filename, 'w') as f:
