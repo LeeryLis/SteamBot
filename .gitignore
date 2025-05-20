@@ -1,0 +1,13 @@
+/shelf/
+/workspace.xml
+.idea
+.env
+
+logs/
+Test_Functionality/
+logs.lnk
+
+data/*
+!data/
+!data/game_IDs.json
+!data/price_analysis_settings.json

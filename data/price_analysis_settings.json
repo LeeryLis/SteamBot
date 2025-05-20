@@ -1,0 +1,9 @@
+{
+    "acceptable_price_diff": 0.03,
+    "reduction": 0.03,
+    "min_desired_profit": 0.02,
+    "desired_profit": 0.04,
+    "low_liquidity_threshold": 10,
+    "min_desired_profit_low_liquidity": 0.04,
+    "desired_profit_low_liquidity": 0.07
+}
