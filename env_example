@@ -1,0 +1,9 @@
+---[ Create your own .env file with its own data ]---
+
+API_KEY = ""
+STEAM_ID = ""
+
+USER_NAME = ""
+PASSWORD = ""
+SHARED_SECRET = "="
+IDENTITY_SECRET = "="

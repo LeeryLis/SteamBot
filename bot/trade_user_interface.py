@@ -1,4 +1,5 @@
 import os
+import requests
 import pickle
 import time
 from datetime import datetime, timedelta
@@ -8,8 +9,6 @@ from dotenv import load_dotenv
 from rich.text import Text
 from rich.console import Console
 
-import requests
-
 from bot import TradeBot
 from bot.marketplace import MarketplaceItemParser
 
@@ -18,12 +17,7 @@ from enums import Currency
 from steam_lib.login import LoginExecutor
 from steam_lib.guard import ConfirmationExecutor, ConfirmationType
 from tools.file_managers import GameIDManager
-
-from tools.console import BasicConsole
-
-from tools.console import ConsoleManager, Command, Param, ParamType
-from tools.file_managers import PriceAnalysisSettingsManager
-
+from tools.console import BasicConsole, ConsoleManager, Param, ParamType
 from utils import handle_429_status_code
 
 from _root import project_root
