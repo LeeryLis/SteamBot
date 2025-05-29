@@ -57,22 +57,22 @@ class Marketplace(BasicRateLimit):
 
     def set_service_limits(self):
         self.rate_limiter.set_limit(
-            "itemordershistogram", 6
+            "itemordershistogram", 4
         )
         self.rate_limiter.set_limit(
             "priceoverview", 4
         )
         self.rate_limiter.set_limit(
-            "createbuyorder", 1
+            "createbuyorder", 0.5
         )
         self.rate_limiter.set_limit(
             "sellitem", 0.5
         )
         self.rate_limiter.set_limit(
-            "removelisting", 1
+            "removelisting", 0.5
         )
         self.rate_limiter.set_limit(
-            "cancelbuyorder", 1
+            "cancelbuyorder", 0.5
         )
 
     @handle_status_codes_using_attempts()

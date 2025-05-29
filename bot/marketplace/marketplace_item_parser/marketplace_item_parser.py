@@ -52,13 +52,10 @@ class MarketplaceItemParser(BasicRateLimit):
 
     def set_service_limits(self):
         self.rate_limiter.set_limit(
-            "mylistings", 1
+            "mylistings", 6
         )
         self.rate_limiter.set_limit(
-            "listings", 3
-        )
-        self.rate_limiter.set_limit(
-            "market_buy_orders", 3
+            "market_buy_orders", 6
         )
 
     @handle_status_codes_using_attempts()

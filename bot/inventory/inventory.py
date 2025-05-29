@@ -48,7 +48,7 @@ class Inventory(BasicRateLimit):
             "inventory", 1
         )
 
-    @handle_status_codes_using_attempts(12)
+    @handle_status_codes_using_attempts(3)
     @rate_limited_cls("inventory")
     def get_inventory(self, session: requests.Session) -> requests.Response:
         url = f"{Urls.INVENTORY}/{self.steam_id}/{self.app_id}/{self.context_id}"
