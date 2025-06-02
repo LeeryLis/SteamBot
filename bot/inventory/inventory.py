@@ -54,7 +54,7 @@ class Inventory(BasicRateLimit):
         url = f"{Urls.INVENTORY}/{self.steam_id}/{self.app_id}/{self.context_id}"
         params = {
             "l": "english",  # Язык ответа
-            "count": 5000  # Максимальное количество предметов за один запрос
+            "count": 1000  # Максимальное количество предметов за один запрос
         }
 
         response = session.get(url, params=params)
