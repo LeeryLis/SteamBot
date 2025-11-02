@@ -125,11 +125,12 @@ class LoginExecutorSelenium:
     def _fill_login_form(self, driver, url: str, manually: bool = False) -> None:
         driver.get(url)
 
-        """
         if not manually:
-            # Переделать, перестало работать
             username_input = WebDriverWait(driver, 10).until(
-                EC.visibility_of_element_located((By.CSS_SELECTOR, "input[type='text']"))
+                EC.visibility_of_element_located((
+                    By.XPATH,
+                    "//div[(contains(text(), 'Sign in') or contains(text(), 'Войдите'))]/following-sibling::input[@type='text']"
+                ))
             )
             username_input.send_keys(self.username)
 
@@ -160,12 +161,7 @@ class LoginExecutorSelenium:
             WebDriverWait(driver, 300).until(
                 lambda d: any(c['name'] == 'steamLoginSecure' for c in d.get_cookies())
             )
-        """
 
-        print("Пожалуйста, войдите вручную в открывшемся окне браузера...")
-        WebDriverWait(driver, 300).until(
-            lambda d: any(c['name'] == 'steamLoginSecure' for c in d.get_cookies())
-        )
         self._get_selenium_cookies_into_requests_session(driver)
 
     def _selenium_login(self, urls_to_login: dict, manually: bool = False) -> None:
@@ -195,7 +191,10 @@ class LoginExecutorSelenium:
         self._load_cookies_into_selenium_driver(driver)
 
         for domain, (url_check, url_login) in urls_to_login.items():
-            if not self._is_logged(url_check):
+            is_logged, err = self._is_logged(url_check)
+            if err:
+                print("Error: login check failed")
+            if not is_logged:
                 try:
                     self._fill_login_form(driver, url_login, manually)
                 except:
