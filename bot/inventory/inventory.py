@@ -1,60 +1,39 @@
 import os
 import requests
-import logging
-from logging.handlers import RotatingFileHandler
 
 from bot.inventory.inventory_item import InventoryItem
-from tools.rate_limiter import BasicRateLimit, rate_limited_cls
+from tools.rate_limiter import rate_limited
 from utils import handle_status_codes_using_attempts
+from tools import BasicLogger
 
 from enums import Urls
 
-from _root import project_root
 
-
-class Inventory(BasicRateLimit):
-    def __init__(self, steam_id: int | str, app_id: int, context_id: int) -> None:
+class Inventory(BasicLogger):
+    def __init__(self, app_id: int, context_id: int) -> None:
         """
-        :param steam_id: ID аккаунта Steam
         :param app_id: ID игры
         :param context_id: ID контекста
         """
-        super().__init__()
+        super().__init__(
+            logger_name=f"{self.__class__.__name__}{app_id}",
+            dir_specify=str(app_id),
+            file_name=f"{self.__class__.__name__}"
+        )
 
-        self.steam_id = steam_id
         self.app_id = app_id
         self.context_id = context_id
 
-        self.logger = logging.getLogger(f"{self.__class__.__name__}{self.app_id}")
-        if not self.logger.handlers:
-            file_path = f"{project_root}/logs/{self.app_id}/{self.__class__.__name__}.log"
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            handler = RotatingFileHandler(
-                file_path,
-                encoding="utf-8",
-                maxBytes=1024 * 1024,
-                backupCount=5
-            )
-            formatter = logging.Formatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
-            )
-            handler.setFormatter(formatter)
-            self.logger.addHandler(handler)
-        self.logger.setLevel(logging.DEBUG)
-
-    def set_service_limits(self):
-        self.rate_limiter.set_limit(
-            "inventory", 1
-        )
-
-    @handle_status_codes_using_attempts(3)
-    @rate_limited_cls("inventory")
-    def get_inventory(self, session: requests.Session) -> requests.Response:
-        url = f"{Urls.INVENTORY}/{self.steam_id}/{self.app_id}/{self.context_id}"
+    @handle_status_codes_using_attempts()
+    @rate_limited(1)
+    def get_inventory_page(
+            self, session: requests.Session, count: int, start_asset_id: str = None
+    ) -> requests.Response:
+        url = f"{Urls.INVENTORY}/{os.getenv('STEAM_ID')}/{self.app_id}/{self.context_id}"
         params = {
             "l": "english",  # Язык ответа
-            "count": 1000  # Максимальное количество предметов за один запрос
+            "count": count,  # Максимальное количество предметов за один запрос
+            "start_assetid": start_asset_id  # Последний полученный id при последовательном получении большого инвентаря
         }
 
         response = session.get(url, params=params)
@@ -66,23 +45,44 @@ class Inventory(BasicRateLimit):
 
         return response
 
-    def get_inventory_items(self, session: requests.Session) -> dict[str, InventoryItem]:
-        response = self.get_inventory(session)
+    def get_inventory(self, session: requests.Session, count_const: int = 1000) -> list[requests.Response] | None:
+        result = []
+        last_assetid = None
+        while True:
+            response = self.get_inventory_page(session, count_const, last_assetid)
+            if response.status_code != 200:
+                return None
+            result.append(response)
 
-        if response.status_code != 200:
+            last_assetid = response.json().get('last_assetid', None)
+            if not last_assetid:
+                break
+
+        return result
+
+    def get_inventory_items(self, session: requests.Session) -> dict[str, InventoryItem]:
+        response_list = self.get_inventory(session)
+
+        if not response_list:
             return {}
 
-        data = response.json()
-        descriptions = data.get('descriptions', [])
-        assets = data.get('assets', [])
+        descriptions = []
+        assets = []
+        for response in response_list:
+            data = response.json()
+            descriptions.extend(data.get('descriptions', []))
+            assets.extend(data.get('assets', []))
 
         inventory_items = {}
 
         for description in descriptions:
             key = description.get('classid') + ";" + description.get('instanceid')
-
             if key not in inventory_items:
-                item = InventoryItem(description.get('market_hash_name'), description.get('marketable'))
+                item = InventoryItem(
+                    description.get('market_hash_name'),
+                    description.get('marketable'),
+                    'owner_descriptions' in description
+                )
                 inventory_items[key] = item
 
         for asset in assets:

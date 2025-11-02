@@ -1,3 +1,4 @@
+import os
 from typing import Iterable
 import enum
 from typing import NamedTuple
@@ -20,6 +21,8 @@ class ConfirmationType(enum.IntEnum):
     CHANGE_PHONE_NUMBER = 5
     CONFIRM = 6  # I saw in the mail change
     REGISTER_API_KEY = 9
+    BUY_LISTING = 12
+
 
 class Confirmation(NamedTuple):
     type: ConfirmationType
@@ -90,10 +93,11 @@ class ConfirmationExecutor:
         params['op'] = tag
         params['ck'] = confirmation.nonce
         params['cid'] = confirmation.id
-        url = self.CONF_URL + '/ajaxop'
-        response = self.session.get(url, headers=self.headers, params=params)
+        headers = {'X-Requested-With': 'XMLHttpRequest'}
+        response = self.session.get(
+            self.CONF_URL + '/ajaxop', params=params, headers=headers)
         try:
-            status = response.json().get('success')
+            status = response.json()['success']
         except requests.exceptions.JSONDecodeError:
             status = False
         return status
@@ -106,10 +110,11 @@ class ConfirmationExecutor:
         params['op'] = tag
         params['ck[]'] = [i.nonce for i in confirmations]
         params['cid[]'] = [i.id for i in confirmations]
+        headers = {'X-Requested-With': 'XMLHttpRequest'}
         response = self.session.post(
-            self.CONF_URL + '/multiajaxop', data=params)
+            self.CONF_URL + '/multiajaxop', data=params, headers=headers)
         try:
-            status = response.json().get('success')
+            status = response.json()['success']
         except requests.exceptions.JSONDecodeError:
             status = False
         return status
@@ -139,13 +144,14 @@ class ConfirmationExecutor:
         url = self.CONF_URL + '/getlist'
         tag = ConfirmationTag.CONF
         params = self._create_confirmation_params(tag)
-        return self.session.get(url, params=params)
+        headers = {'X-Requested-With': 'com.valvesoftware.android.steam.community'}
+        return self.session.get(url, params=params, headers=headers)
 
     def _create_confirmation_params(self, tag: str) -> dict[str, str]:
         timestamp = int(time.time())
         confirmation_key = generate_confirmation_key(
             self.identity_secret, tag)
-        android_id = generate_device_id(self.steam_id)
+        android_id = generate_device_id(self.steam_id)  # os.getenv('DEVICE_ID')
         params = {
             'p': android_id,
             'a': self.steam_id,
@@ -155,6 +161,15 @@ class ConfirmationExecutor:
             'tag': tag
         }
         return params
+
+    def allow_buy_order_confirmation(self)\
+            -> bool:
+        types = [ConfirmationType.BUY_LISTING]
+        confirmations = self.get_confirmations()
+        for confirmation in confirmations:
+            if confirmation.type in types:
+                return self.respond_to_confirmation(confirmation)
+        return False
 
     def allow_all_confirmations(self, types: Iterable[ConfirmationType])\
             -> bool:

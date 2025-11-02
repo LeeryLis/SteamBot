@@ -1,28 +1,29 @@
 from typing import Any
 
-import os
 import requests
-import logging
-from logging.handlers import RotatingFileHandler
 from tools import CustomTTLCache
+from urllib.parse import quote
 
 from utils import handle_status_codes_using_attempts
 from tools.file_managers.item_manager import ItemManager
-from tools.rate_limiter import BasicRateLimit, rate_limited_cls
+from tools.rate_limiter import rate_limited
 from utils.exceptions import TooManyRequestsError
 from enums import Config, Urls
+from tools import BasicLogger
 
-from _root import project_root
 
-
-class Marketplace(BasicRateLimit):
+class Marketplace(BasicLogger):
     def __init__(self, app_id: int, context_id: int, currency: int) -> None:
         """
         :param app_id: ID игры
         :param context_id: ID контекста
         :param currency: валюта
         """
-        super().__init__()
+        super().__init__(
+            logger_name=f"{self.__class__.__name__}{app_id}",
+            dir_specify=str(app_id),
+            file_name=f"{self.__class__.__name__}"
+        )
 
         self.app_id = app_id
         self.context_id = context_id
@@ -34,49 +35,11 @@ class Marketplace(BasicRateLimit):
         self.cache_sales_per_day = CustomTTLCache.load_cache(
             self.cache_sales_per_day_filename, maxsize=1000, ttl=7*24*60*60)
 
-        self.logger = logging.getLogger(f"{self.__class__.__name__}{self.app_id}")
-        if not self.logger.handlers:
-            file_path = f"{project_root}/logs/{self.app_id}/{self.__class__.__name__}.log"
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            handler = RotatingFileHandler(
-                file_path,
-                encoding="utf-8",
-                maxBytes=1024 * 1024,
-                backupCount=5
-            )
-            formatter = logging.Formatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
-            )
-            handler.setFormatter(formatter)
-            self.logger.addHandler(handler)
-        self.logger.setLevel(logging.DEBUG)
-
     def save_cache_sales_per_day(self):
         self.cache_sales_per_day.save_cache(self.cache_sales_per_day_filename)
 
-    def set_service_limits(self):
-        self.rate_limiter.set_limit(
-            "itemordershistogram", 4
-        )
-        self.rate_limiter.set_limit(
-            "priceoverview", 4
-        )
-        self.rate_limiter.set_limit(
-            "createbuyorder", 0.5
-        )
-        self.rate_limiter.set_limit(
-            "sellitem", 0.5
-        )
-        self.rate_limiter.set_limit(
-            "removelisting", 0.5
-        )
-        self.rate_limiter.set_limit(
-            "cancelbuyorder", 0.5
-        )
-
     @handle_status_codes_using_attempts()
-    @rate_limited_cls("itemordershistogram")
+    @rate_limited(6)
     def get_item_market_data(self, session: requests.Session, item_name: str) -> requests.Response | None:
         params = {
             "country": "RU",
@@ -86,10 +49,8 @@ class Marketplace(BasicRateLimit):
         }
         headers = {
             'Referer': f'{Urls.MARKET}/listings/{self.app_id}/{item_name}',
-            'User-Agent': (
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
-                'Chrome/128.0.0.0 Safari/537.36 OPR/114.0.0.0 (Edition Yx 08)'
-            ),
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:143.0) "
+                          "Gecko/20100101 Firefox/143.0",
             'Accept': '*/*',
             'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
             'Accept-Encoding': 'gzip, deflate, br, zstd',
@@ -134,7 +95,7 @@ class Marketplace(BasicRateLimit):
         return sales_per_day if sales_per_day > 0 else 1
 
     @handle_status_codes_using_attempts()
-    @rate_limited_cls("priceoverview")
+    @rate_limited(6)
     def get_item_public_info(self, session: requests.Session, item_name: str) -> requests.Response:
         params = {
             "currency": self.currency,
@@ -143,10 +104,8 @@ class Marketplace(BasicRateLimit):
         }
         headers = {
             'Referer': f'{Urls.MARKET}/listings/{self.app_id}/{item_name}',
-            'User-Agent': (
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
-                'Chrome/128.0.0.0 Safari/537.36 OPR/114.0.0.0 (Edition Yx 08)'
-            ),
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:143.0) "
+                          "Gecko/20100101 Firefox/143.0",
             'Accept': '*/*',
             'Accept-Language': 'en-US;q=0.8,en;q=0.7',
             'Accept-Encoding': 'gzip, deflate, br, zstd',
@@ -170,35 +129,30 @@ class Marketplace(BasicRateLimit):
         return response
 
     @handle_status_codes_using_attempts()
-    @rate_limited_cls("createbuyorder")
-    def create_buy_order(self, session: requests.Session, item_name: str, price: float, quantity: int) -> requests.Response:
+    @rate_limited(0.3)
+    def create_buy_order(
+            self, session: requests.Session,
+            item_name: str, price: float, quantity: int, confirmation_id: str = '0'
+    ) -> requests.Response:
         data = {
             'sessionid': session.cookies.get("sessionid", domain="steamcommunity.com"),
             'currency': self.currency,
             'appid': self.app_id,
             'market_hash_name': item_name,
             'price_total': round(price * 100 * quantity),
-            'quantity': quantity
+            # 'tradefee_tax': 0,
+            'quantity': quantity,
+            # 'billing_state': '',
+            # 'save_my_address': 0,
+            'confirmation': confirmation_id
         }
         headers = {
-            'Referer': f'{Urls.MARKET}/listings/{self.app_id}/{item_name}',
-            'User-Agent': (
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
-                'Chrome/128.0.0.0 Safari/537.36 OPR/114.0.0.0 (Edition Yx 08)'
-            ),
-            'Accept': '*/*',
-            'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'X-Requested-With': 'XMLHttpRequest',
-            'Connection': 'keep-alive',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'same-origin'
+            'Referer': f'{Urls.MARKET}/listings/{self.app_id}/{quote(item_name)}'
         }
+        response = session.post(
+            url=f'{Urls.MARKET}/createbuyorder/', data=data, headers=headers)
 
-        response = session.post(f'{Urls.MARKET}/createbuyorder/', data=data, headers=headers)
-
-        if response.status_code != 200:
+        if response.status_code not in (200, 406):
             self.logger.error(
                 f"Ошибка при создании buy order '{item_name}': "
                 f"{response.status_code} {response.reason}"
@@ -209,7 +163,7 @@ class Marketplace(BasicRateLimit):
         return response
 
     @handle_status_codes_using_attempts()
-    @rate_limited_cls("sellitem")
+    @rate_limited(0.3)
     def create_sell_order(self, session: requests.Session, steam_id: str, asset_id: int, amount: int, price: float) -> requests.Response:
         data = {
             'sessionid': session.cookies.get("sessionid", domain="steamcommunity.com"),
@@ -219,13 +173,13 @@ class Marketplace(BasicRateLimit):
             'amount': amount,
             'price': round(price * 100 * Config.WITH_COMMISSION)
         }
+
         headers = {
-            'User-Agent': (
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
-                'Chrome/128.0.0.0 Safari/537.36 OPR/114.0.0.0 (Edition Yx 08)'
-            ),
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:143.0) "
+                          "Gecko/20100101 Firefox/143.0",
             'Host': "steamcommunity.com",
             'Referer': f'https://steamcommunity.com/id/{steam_id}/inventory',
+            # 'Referer': f'https://steamcommunity.com/profiles/{steam_id}/inventory',
             'Origin': 'https://steamcommunity.com',
             'Accept': '*/*',
             'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
@@ -250,7 +204,7 @@ class Marketplace(BasicRateLimit):
         return response
 
     @handle_status_codes_using_attempts()
-    @rate_limited_cls("removelisting")
+    @rate_limited(0.3)
     def cancel_sell_order(self, session: requests.Session, sell_listing_id: int) -> requests.Response:
         url = f"https://steamcommunity.com/market/removelisting/{sell_listing_id}"
         data = {
@@ -258,10 +212,8 @@ class Marketplace(BasicRateLimit):
         }
         headers = {
             'Referer': "https://steamcommunity.com/market/",
-            'User-Agent': (
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
-                'Chrome/128.0.0.0 Safari/537.36 OPR/114.0.0.0 (Edition Yx 08)'
-            ),
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:143.0) "
+                          "Gecko/20100101 Firefox/143.0",
             'Accept': '*/*'
         }
 
@@ -278,15 +230,13 @@ class Marketplace(BasicRateLimit):
         return response
 
     @handle_status_codes_using_attempts()
-    @rate_limited_cls("cancelbuyorder")
+    @rate_limited(0.3)
     def cancel_buy_order(self, session: requests.Session, buy_order_id: int) -> requests.Response:
         url = "https://steamcommunity.com/market/cancelbuyorder/"
         headers = {
             'Referer': "https://steamcommunity.com/market/",
-            'User-Agent': (
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
-                'Chrome/128.0.0.0 Safari/537.36 OPR/114.0.0.0 (Edition Yx 08)'
-            ),
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:143.0) "
+                          "Gecko/20100101 Firefox/143.0",
             'Accept': '*/*'
         }
         data = {
@@ -305,4 +255,3 @@ class Marketplace(BasicRateLimit):
                 raise TooManyRequestsError()
 
         return response
-

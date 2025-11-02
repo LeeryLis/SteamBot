@@ -3,4 +3,7 @@ class Urls:
     LOGIN = "https://login.steampowered.com"
     COMMUNITY = "https://steamcommunity.com"
     INVENTORY = "https://steamcommunity.com/inventory"
+    MY_INVENTORY = "https://steamcommunity.com/my/inventory"
     MARKET = "https://steamcommunity.com/market"
+    ACCOUNT = "https://store.steampowered.com/account"
+    STORE = "https://store.steampowered.com"

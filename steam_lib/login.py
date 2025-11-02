@@ -1,10 +1,19 @@
+"""
+    Вход в аккаунт с использованием API Steam.
+    Не лучший вариант, сейчас используется метод
+    входа с Selenium. Steam признаёт его как нормальный браузер.
+"""
+
 import base64
 import rsa
+import os
+import pickle
 
 import requests
 
 from .guard import generate_one_time_code
 from enums import Urls
+from _root import project_root
 
 
 class IAuthenticationServiceEndpoint:
@@ -28,21 +37,36 @@ class LoginExecutor:
         self.session = session
 
         self.headers = {
-            'User-Agent': (
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
-                'Chrome/128.0.0.0 Safari/537.36 OPR/114.0.0.0 (Edition Yx 08)'
-            ),
-            'Accept': '*/*',
-            'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Accept-Encoding': 'gzip, deflate, br, zstd',
-            'X-Requested-With': 'XMLHttpRequest',
-            'Connection': 'keep-alive',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'same-origin'
+            'Referer': f'{Urls.COMMUNITY}/',
+            'Origin': Urls.COMMUNITY
         }
 
+        self.cookies_file = f"{project_root}/data/saved_session/cookies.pkl"
+        self.steam_id_file = f"{project_root}/data/saved_session/steam_id.txt"
+
+    def _load_cookies(self) -> bool:
+        try:
+            with open(self.cookies_file, 'rb') as f:
+                self.session.cookies.update(pickle.load(f))
+            with open(self.steam_id_file, 'r') as f:
+                self.steam_id = int(f.read())
+        except FileNotFoundError:
+            return False
+
+        return True
+
+    def _save_cookies(self) -> bool:
+        dir_path = os.path.dirname(self.cookies_file)
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path)
+        with open(self.cookies_file, 'wb') as f:
+            pickle.dump(self.session.cookies, f)
+        return True
+
     def login(self) -> str:
+        if self._load_cookies():
+            return self.steam_id
+
         self.session.get(Urls.COMMUNITY)  # to get a cookies
         rsa_key, rsa_timestamp = self._fetch_rsa_params()
         encrypted_password = self._encrypt_password(rsa_key)
@@ -52,6 +76,8 @@ class LoginExecutor:
         refresh_token = self._request_refresh_token(client_id, request_id)
         finalize_response = self._finalize_login(refresh_token)
         self._send_transfer_info(finalize_response)
+
+        self._save_cookies()
         return self.steam_id
 
     def _fetch_rsa_params(self) -> tuple[rsa.PublicKey, str]:
@@ -114,7 +140,7 @@ class LoginExecutor:
         }
         headers = {
             'Referer': redir_url,
-            'Origin': 'https://steamcommunity.com'
+            'Origin': Urls.COMMUNITY
         }
         headers.update(self.headers)
         finalize_response = self.session.post(finalize_url, headers=headers, data=finalize_data).json()

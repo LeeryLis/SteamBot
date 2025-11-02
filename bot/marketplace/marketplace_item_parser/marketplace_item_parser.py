@@ -4,27 +4,27 @@ import os
 import bs4.element
 import requests
 from bs4 import BeautifulSoup
-import urllib.parse
-import logging
-from logging.handlers import RotatingFileHandler
 
 from utils import handle_status_codes_using_attempts
-from tools.rate_limiter import BasicRateLimit, rate_limited_cls
+from tools.rate_limiter import rate_limited
 from bot.marketplace.marketplace_item_parser.sell_order_item import SellOrderItem
 from bot.marketplace.marketplace_item_parser.buy_order_item import BuyOrderItem
 from utils.exceptions import TooManyRequestsError
 from enums import Urls
+from tools import BasicLogger
 
-from _root import project_root
 
-
-class MarketplaceItemParser(BasicRateLimit):
+class MarketplaceItemParser(BasicLogger):
     def __init__(self, app_id: int, context_id: int) -> None:
         """
         :param app_id: ID игры
         :param context_id: ID контекста
         """
-        super().__init__()
+        super().__init__(
+            logger_name=f"{self.__class__.__name__}{app_id}",
+            dir_specify=str(app_id),
+            file_name=f"{self.__class__.__name__}"
+        )
 
         self.app_id = app_id
         self.context_id = context_id
@@ -32,34 +32,8 @@ class MarketplaceItemParser(BasicRateLimit):
         self.sell_orders: dict[str, list[SellOrderItem]] = {}
         self.buy_orders: dict[str, BuyOrderItem] = {}
 
-        self.logger = logging.getLogger(f"{self.__class__.__name__}{self.app_id}")
-        if not self.logger.handlers:
-            file_path = f"{project_root}/logs/{self.app_id}/{self.__class__.__name__}.log"
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            handler = RotatingFileHandler(
-                file_path,
-                encoding="utf-8",
-                maxBytes=1024 * 1024,
-                backupCount=5
-            )
-            formatter = logging.Formatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
-            )
-            handler.setFormatter(formatter)
-            self.logger.addHandler(handler)
-        self.logger.setLevel(logging.DEBUG)
-
-    def set_service_limits(self):
-        self.rate_limiter.set_limit(
-            "mylistings", 6
-        )
-        self.rate_limiter.set_limit(
-            "market_buy_orders", 6
-        )
-
     @handle_status_codes_using_attempts()
-    @rate_limited_cls("mylistings")
+    @rate_limited(6)
     def get_sell_orders_page(self, session: requests.Session, is_check_connection: bool = False) -> requests.Response:
         url = f"{Urls.MARKET}/mylistings/render/?query=&start=0&count=-1"
         headers = {
@@ -92,7 +66,7 @@ class MarketplaceItemParser(BasicRateLimit):
         return response
 
     @handle_status_codes_using_attempts()
-    @rate_limited_cls("market_buy_orders")
+    @rate_limited(6)
     def _get_buy_orders_page(self, session: requests.Session) -> requests.Response:
         url = f"{Urls.MARKET}"
         headers = {
@@ -130,6 +104,16 @@ class MarketplaceItemParser(BasicRateLimit):
         name_href = item_page_link.get("href", "")
         return int(re.search(r"https://steamcommunity.com/market/listings/(\d+)", name_href).group(1))
 
+    def _get_item_count(self, element: bs4.element.Tag) -> int:
+        market_listing_item_name_link = element.find(
+            "a",
+            class_="market_listing_item_name_link")
+        name_text = market_listing_item_name_link.text
+        count = name_text.split(" ")[0].replace(",", "")
+        if str.isdigit(count):
+            return int(count)
+        return 1
+
     def parse_actual_sell_order_items(self, session: requests.Session) -> dict[str, list[SellOrderItem]] | None:
         response = self.get_sell_orders_page(session)
 
@@ -155,17 +139,23 @@ class MarketplaceItemParser(BasicRateLimit):
                 continue
 
             order_id = int(element.get("id", "").split("_")[1])
-            sell_order_items[i].order_id = order_id
+            try:
+                sell_order_items[i].order_id = order_id
+            except IndexError:
+                break
 
             buyer_price = element.find("span", title="This is the price the buyer pays.")
             seller_price = element.find("span", title="This is how much you will receive.")
             creation_date = element.find("div",
                                          class_="market_listing_right_cell market_listing_listed_date can_combine")
 
-            sell_order_items[i].buyer_price = float(
+            count = self._get_item_count(element)
+            sell_order_items[i].count = count
+
+            sell_order_items[i].buyer_price = count * float(
                 buyer_price.get_text(strip=True).replace(",", ".").split()[0] if buyer_price else None
             )
-            sell_order_items[i].seller_price = float(
+            sell_order_items[i].seller_price = count * float(
                 seller_price.get_text(strip=True).replace(",", ".").replace("(", "").replace(")", "").split()[0] \
                     if seller_price else None
             )

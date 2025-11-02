@@ -1,32 +1,25 @@
+import time
 from functools import wraps
 
-from .rate_limiter import RateLimiter
+from .service_limit import ServiceLimit
 
 
-def rate_limited(service_name: str, rate_limiter: RateLimiter):
+def rate_limited(min_delay: float):
     """
-    Декоратор для управления задержкой между вызовами метода, обращающегося к сервису.
-    :param service_name: Название сервиса, для которого применяется ограничение.
-    :param rate_limiter: Экземпляр RateLimiter для управления задержками.
+        Декоратор для управления задержкой между вызовами метода, обращающегося к сервису.
     """
+    service_limit = ServiceLimit(min_delay)
+
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            rate_limiter.wait_for_service(service_name)
-            return func(*args, **kwargs)
-        return wrapper
-    return decorator
+            elapsed_time = service_limit.time_since_last_request()
 
-def rate_limited_cls(service_name: str):
-    """
-    Декоратор для управления задержкой между вызовами метода, обращающегося к сервису.
-    Адаптирован для использования в классах (где используется self.rate_limiter, который нельзя передать в декоратор)
-    :param service_name: Название сервиса, для которого применяется ограничение.
-    """
-    def decorator(func):
-        @wraps(func)
-        def wrapper(self, *args, **kwargs):
-            self.rate_limiter.wait_for_service(service_name)
-            return func(self, *args, **kwargs)
+            if elapsed_time < service_limit.min_delay:
+                wait_time = service_limit.min_delay - elapsed_time
+                time.sleep(wait_time)
+
+            service_limit.update_last_request_time()
+            return func(*args, **kwargs)
         return wrapper
     return decorator
