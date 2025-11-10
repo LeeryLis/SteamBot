@@ -6,10 +6,12 @@ import os
 
 from requests.cookies import RequestsCookieJar
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
 
 from .guard import generate_one_time_code
 from enums import Urls
@@ -45,6 +47,7 @@ class LoginExecutorSelenium:
             if not is_logged:
                 urls_to_login[domain] = (url_check, url_login)
         if urls_to_login:
+            print("Refresh cookies...")
             manually = self.shared_secret == ""
             self._selenium_login(urls_to_login, manually)
             self._save_cookies_to_file()
@@ -181,13 +184,13 @@ class LoginExecutorSelenium:
         options.add_argument("--disable-notifications")
         options.add_argument("--disable-features=SameSiteByDefaultCookies,BlockThirdPartyCookies")
         options.add_argument("--enable-features=NetworkService,NetworkServiceInProcess")
-        options.add_argument(
-            "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/119.0.0.0 Safari/537.36"
+
+        service = Service(
+            ChromeDriverManager().install(),
+            log_output=os.devnull
         )
 
-        driver = webdriver.Chrome(options=options)
+        driver = webdriver.Chrome(service=service, options=options)
         self._load_cookies_into_selenium_driver(driver)
 
         for domain, (url_check, url_login) in urls_to_login.items():
