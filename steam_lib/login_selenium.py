@@ -1,3 +1,4 @@
+import subprocess
 import time
 
 import requests
@@ -11,7 +12,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
+from contextlib import contextmanager
 
 from .guard import generate_one_time_code
 from enums import Urls
@@ -185,10 +186,8 @@ class LoginExecutorSelenium:
         options.add_argument("--disable-features=SameSiteByDefaultCookies,BlockThirdPartyCookies")
         options.add_argument("--enable-features=NetworkService,NetworkServiceInProcess")
 
-        service = Service(
-            ChromeDriverManager().install(),
-            log_output=os.devnull
-        )
+        service = Service(log_output=os.devnull)
+        service.creation_flags = subprocess.CREATE_NO_WINDOW
 
         driver = webdriver.Chrome(service=service, options=options)
         self._load_cookies_into_selenium_driver(driver)
