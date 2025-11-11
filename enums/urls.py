@@ -7,3 +7,4 @@ class Urls:
     MARKET = "https://steamcommunity.com/market"
     ACCOUNT = "https://store.steampowered.com/account"
     STORE = "https://store.steampowered.com"
+    HISTORY = "https://steamcommunity.com/market/myhistory"

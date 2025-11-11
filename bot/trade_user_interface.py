@@ -278,6 +278,16 @@ class TradeUserInterface(BasicConsole):
         self.console.print(Text(f"Wallet Balance: {balance:.2f}", style="cyan"))
         self.console.print(Text(f"Pending Balance: {pending:.2f}", style="yellow"))
         self.console.print(Text(f"Total: {total:.2f}", style="green"))
+
+    @command(
+        aliases=["history", "summarize"],
+        description="Collect market history"
+    )
+    def summarize_market_history(self) -> None:
+        self._login()
+
+        account = Account()
+        account.summarize_market_history(self.session)
     # endregion
 
     # region Fundamental commands
