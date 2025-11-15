@@ -4,7 +4,6 @@
 .env
 
 logs/
-Test_Functionality/
 logs.lnk
 
 data/*
