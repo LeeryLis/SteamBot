@@ -54,8 +54,11 @@ class PriceAnalysis:
         price = 0
         ignore_count = 0
         for sell_order in market_data['sell_order_graph']:
-            price = sell_order[0]
-            count = sell_order[1]
+            try:
+                price = float(sell_order[0])
+                count = int(sell_order[1])
+            except (TypeError, ValueError):
+                continue
 
             if my_prices_count:
                 for my_price, my_count in my_prices_count.items():
@@ -71,7 +74,10 @@ class PriceAnalysis:
 
     def _find_first_available_price(self, market_data: dict[str, Any], median_price: float, my_sell_orders: list[SellOrderItem]) -> float:
         for sell_order in market_data.get('sell_order_graph'):
-            price = sell_order[0]
+            try:
+                price = float(sell_order[0])
+            except (TypeError, ValueError):
+                continue
             if my_sell_orders and any(sell_order.buyer_price == price for sell_order in my_sell_orders):
                 continue
             if 1 - price / median_price <= self.acceptable_price_diff:
