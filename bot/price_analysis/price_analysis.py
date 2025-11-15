@@ -72,7 +72,9 @@ class PriceAnalysis:
 
         return price
 
-    def _find_first_available_price(self, market_data: dict[str, Any], median_price: float, my_sell_orders: list[SellOrderItem]) -> float:
+    def _find_first_available_price(
+            self, market_data: dict[str, Any], median_price: float, my_sell_orders: list[SellOrderItem]) -> float:
+        acceptable_price = (1 - self.acceptable_price_diff) * median_price
         for sell_order in market_data.get('sell_order_graph'):
             try:
                 price = float(sell_order[0])
@@ -80,7 +82,7 @@ class PriceAnalysis:
                 continue
             if my_sell_orders and any(sell_order.buyer_price == price for sell_order in my_sell_orders):
                 continue
-            if 1 - price / median_price <= self.acceptable_price_diff:
+            if price >= acceptable_price:
                 return price
         return 0
 

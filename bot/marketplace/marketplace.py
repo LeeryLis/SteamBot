@@ -33,7 +33,7 @@ class Marketplace(BasicLogger):
 
         self.cache_sales_per_day_filename = f"data/sales_per_day_cache/{self.app_id}.dill"
         self.cache_sales_per_day = CustomTTLCache.load_cache(
-            self.cache_sales_per_day_filename, maxsize=1000, ttl=7*24*60*60)
+            self.cache_sales_per_day_filename, maxsize=1000, ttl=24*60*60)
 
     def save_cache_sales_per_day(self):
         self.cache_sales_per_day.save_cache(self.cache_sales_per_day_filename)

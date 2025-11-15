@@ -275,7 +275,8 @@ class TradeBot(BasicLogger):
 
                 recommended_price = self.price_analysis.recommend_sell_price(
                     market_data, self.marketplace_item_parser.sell_orders.get(item.name), sales_per_day // 2)
-                self._sell_item(session, item, recommended_price)
+                if recommended_price:
+                    self._sell_item(session, item, recommended_price)
 
         self._confirm_all_sell_orders(session)
 
