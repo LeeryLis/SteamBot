@@ -1,5 +1,5 @@
 {
-    "acceptable_price_diff": 0.03,
+    "acceptable_price_diff": 0.04,
     "reduction": 0.03,
     "min_desired_profit": 0.02,
     "desired_profit": 0.04,
