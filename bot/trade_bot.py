@@ -260,6 +260,9 @@ class TradeBot(BasicLogger):
         self.marketplace_item_parser.parse_actual_sell_order_items(session)
 
         items = [item for item in inventory_items.values() if item.marketable]
+        if not items:
+            print("Нет предметов для продажи")
+            return
         with tqdm(items, unit="item", ncols=Config.TQDM_CONSOLE_WIDTH) as pbar:
             for item in pbar:
                 # pbar.set_description(f"{item.name}")
