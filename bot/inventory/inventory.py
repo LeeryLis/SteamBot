@@ -24,8 +24,8 @@ class Inventory(BasicLogger):
         self.app_id = app_id
         self.context_id = context_id
 
-    @handle_status_codes_using_attempts()
     @rate_limited(1)
+    @handle_status_codes_using_attempts()
     def get_inventory_page(
             self, session: requests.Session, count: int, start_asset_id: str = None
     ) -> requests.Response:

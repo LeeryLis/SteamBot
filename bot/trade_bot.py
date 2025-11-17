@@ -253,6 +253,9 @@ class TradeBot(BasicLogger):
 
     def sell_inventory(self, session: requests.Session) -> None:
         inventory_items = self.inventory.get_inventory_items(session)
+        if not inventory_items:
+            print("Нет предметов для продажи")
+            return
 
         self.marketplace_item_parser.parse_actual_sell_order_items(session)
 
