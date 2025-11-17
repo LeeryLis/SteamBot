@@ -14,6 +14,7 @@ from tools import BasicLogger
 from enums import Urls
 from enums import Config
 from bot.account.market_item_stats import MarketItemStats
+from bot.account.summarize_to_excel import SummarizeToExcel
 from utils.exceptions import TooManyRequestsError
 
 
@@ -28,6 +29,7 @@ class Account(BasicLogger):
             dir_specify="account",
             file_name=f"{self.__class__.__name__}"
         )
+        self.excel_maker = SummarizeToExcel()
 
     @handle_status_codes_using_attempts()
     @rate_limited(1)
@@ -142,7 +144,7 @@ class Account(BasicLogger):
         total_new_count = total_count - processed_count
         if total_new_count <= 0:
             print("Нет новых записей для обработки")
-            return 0, {}
+            return start_total_count, aggregated_data
 
         start = 0
         with tqdm(
@@ -220,16 +222,18 @@ class Account(BasicLogger):
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(save_object, f, ensure_ascii=False, indent=2)
 
-        print(f"Сохранено {file_path}, processed_count = {save_object['processed_count']}")
+        print(f"Json сохранён: {file_path}. Всего записей: {save_object['processed_count']}")
 
     def summarize_market_history(
-            self, session: requests.Session, file_path: str = "data/market_history/summarize.json"
+            self, session: requests.Session, json_file_path: str = "data/market_history/summarize.json",
+            excel_file_path: str = "data/market_history/summarize.xlsx"
     ) -> None:
-        processed_count, aggregated_data = self._load_summarize_market_history(file_path)
+        processed_count, aggregated_data = self._load_summarize_market_history(json_file_path)
 
         new_processed_count, aggregated_data = self._collect_aggregated_market_history(
             session, aggregated_data, processed_count)
 
         if new_processed_count:
-            self._save_summarize_market_history(file_path, aggregated_data, new_processed_count)
+            self._save_summarize_market_history(json_file_path, aggregated_data, new_processed_count)
+            self.excel_maker.summarize_json_to_excel(json_file_path, excel_file_path)
     # endregion
