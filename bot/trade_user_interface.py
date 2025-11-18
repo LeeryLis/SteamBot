@@ -281,7 +281,8 @@ class TradeUserInterface(BasicConsole):
 
     @command(
         aliases=["history", "summarize"],
-        description="Collect market history"
+        description="Collect market history",
+        usage="history"
     )
     def summarize_market_history(self) -> None:
         self._login()

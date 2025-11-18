@@ -26,6 +26,8 @@ class Command:
                 self.action(*positional, **kwargs)
             else:
                 self.action()
+        except TypeError:
+            Console().print(f"Usage: [green]{escape_brackets(self.usage)}[/green]")
         except Exception as ex:
             Console().print(f"[red]{ex}[/red]\nUsage: [green]{escape_brackets(self.usage)}[/green]")
 
