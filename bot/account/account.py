@@ -80,14 +80,19 @@ class Account(BasicLogger):
     @rate_limited(3)
     def _get_history_page_content(session: requests.Session, count: int, start: int):
         url = f'{Urls.HISTORY}/render/?count={count}&start={start}'
-        page = session.get(url)
 
-        if page.status_code != 200:
-            time.sleep(20)
+        for _ in range(4):
             page = session.get(url)
+            if page.status_code == 200:
+                result = json.loads(page.content)
+                if not result.get("total_count", 0):
+                    time.sleep(5)
+                else:
+                    return result
+            else:
+                time.sleep(20)
 
-        result = json.loads(page.content)
-        return result
+        raise Exception("Не удалось получить страницу market history")
 
     @staticmethod
     def _get_item_count(item_name: str) -> (str, int):
@@ -96,7 +101,7 @@ class Account(BasicLogger):
             count = int(parts[0].replace(",", ""))
             base_name = parts[1].strip() if len(parts) > 1 else ""
             return base_name, count
-        return item_name.strip(), 1
+        return item_name, 1
 
     def _aggregate_data(self, html_content: str, aggregated_data: dict) -> dict:
         document = BeautifulSoup(html_content, 'html.parser')
@@ -104,7 +109,7 @@ class Account(BasicLogger):
         if not rows:
             raise Exception("Не получены элементы market history")
 
-        for row in rows:
+        for row in reversed(rows):
             game_element = row.find("span", class_="market_listing_game_name")
             item_element = row.find("span", class_="market_listing_item_name")
             price_element = row.find("span", class_="market_listing_price")
@@ -130,7 +135,7 @@ class Account(BasicLogger):
                 item_stats.total_sold += count
                 item_stats.sum_sold = round(item_stats.sum_sold + price, 2)
             else:
-                raise Exception(f"Не было gain_or_loss. {row}")
+                raise Exception(f"Не найдено gain_or_loss")
 
         return aggregated_data
 
@@ -146,14 +151,15 @@ class Account(BasicLogger):
             print("Нет новых записей для обработки")
             return start_total_count, aggregated_data
 
-        start = 0
+        start = total_new_count
         with tqdm(
                 total=total_new_count, unit="order", ncols=Config.TQDM_CONSOLE_WIDTH, desc="Processing market history"
         ) as pbar:
             while True:
-                new_count = min(count_per_request, total_new_count - start)
+                new_count = min(count_per_request, start + start_total_count - total_count)
                 if new_count <= 0:
                     break
+                start = max(start - new_count, 0)
 
                 page_content = self._get_history_page_content(session, new_count, start)
                 html_content = page_content.get("results_html", "")
@@ -162,11 +168,9 @@ class Account(BasicLogger):
                 if total_count_difference:
                     total_count = total_count_now
                     start += total_count_difference
-                    total_new_count += total_count_difference
                     page_content = self._get_history_page_content(session, new_count, start)
                     html_content = page_content.get("results_html", "")
 
-                start += new_count
                 if not html_content:
                     raise Exception("Не получен results_html")
 
@@ -225,8 +229,9 @@ class Account(BasicLogger):
         print(f"Json сохранён: {file_path}. Всего записей: {save_object['processed_count']}")
 
     def summarize_market_history(
-            self, session: requests.Session, json_file_path: str = "data/market_history/summarize.json",
-            excel_file_path: str = "data/market_history/summarize.xlsx"
+            self, session: requests.Session,
+            json_file_path: str = "data/market_history/summarize.json",
+            excel_file_path: str = "data/market_history/summarize.xlsx",
     ) -> None:
         processed_count, aggregated_data = self._load_summarize_market_history(json_file_path)
 

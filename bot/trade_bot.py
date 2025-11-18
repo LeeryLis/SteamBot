@@ -180,6 +180,9 @@ class TradeBot(BasicLogger):
         но метод не будет выставлять их по корректной цене (нужно вызвать метод 'sell_inventory')
         """
         self.marketplace_item_parser.parse_actual_sell_order_items(session)
+        if not self.marketplace_item_parser.sell_orders:
+            print("Нет выставленных предметов")
+            return
 
         with tqdm(self.marketplace_item_parser.sell_orders.keys(), unit="order", ncols=Config.TQDM_CONSOLE_WIDTH) as pbar:
             for item_name in pbar:
