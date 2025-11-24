@@ -1,3 +1,4 @@
+import re
 import json
 import time
 
@@ -78,7 +79,7 @@ class Account(BasicLogger):
     # region Market History
     @staticmethod
     @rate_limited(3)
-    def _get_history_page_content(session: requests.Session, count: int, start: int):
+    def _get_history_page_content(session: requests.Session, count: int, start: int) -> dict:
         url = f'{Urls.HISTORY}/render/?count={count}&start={start}'
 
         for _ in range(4):
@@ -95,15 +96,46 @@ class Account(BasicLogger):
         raise Exception("Не удалось получить страницу market history")
 
     @staticmethod
-    def _get_item_count(item_name: str) -> (str, int):
-        parts = item_name.strip().split(maxsplit=1)
-        if parts and parts[0].replace(",", "").isdigit():
-            count = int(parts[0].replace(",", ""))
-            base_name = parts[1].strip() if len(parts) > 1 else ""
-            return base_name, count
-        return item_name, 1
+    def _build_hover_map(hovers: str) -> dict[str, dict[str, str]]:
+        hover_map: dict[str, dict[str, str]] = {}
 
-    def _aggregate_data(self, html_content: str, aggregated_data: dict) -> dict:
+        re_call = re.compile(
+            r"CreateItemHoverFromContainer\(\s*g_rgAssets\s*,\s*"
+            r"(?P<quote1>['\"])(?P<container>.+?)(?P=quote1)\s*,\s*"
+            r"(?P<app_id>\d+)\s*,\s*"
+            r"(?P<quote2>['\"])(?P<context_id>.+?)(?P=quote2)\s*,\s*"
+            r"(?P<quote3>['\"])(?P<item_id>\d+)(?P=quote3)\s*,\s*"
+            r"(?P<rest>\d+)\s*\)",
+            flags=re.IGNORECASE
+        )
+
+        for m in re_call.finditer(hovers):
+            container = m.group("container")
+            app_id = m.group("app_id")
+            context_id = m.group("context_id")
+            item_id = m.group("item_id")
+
+            key = re.sub(r"_(name|image|icon|link|price|count)$", "", container, flags=re.IGNORECASE)
+
+            if not hover_map.get(key):
+                hover_map[key] = {
+                    "app_id": app_id,
+                    "context_id": context_id,
+                    "item_id": item_id
+                }
+
+        return hover_map
+
+    def _aggregate_data(self, page_content: dict, aggregated_data: dict, app_id_to_game_name: dict) -> (dict, dict):
+        html_content: str = page_content.get("results_html", "")
+        assets: dict = page_content.get("assets", "")
+        hovers: str = page_content.get("hovers", "")
+
+        if not (html_content and assets and hovers):
+            raise Exception("Не получены элементы страницы истории")
+
+        hover_map = self._build_hover_map(hovers)
+
         document = BeautifulSoup(html_content, 'html.parser')
         rows = document.find_all("div", class_="market_listing_row")
         if not rows:
@@ -111,23 +143,33 @@ class Account(BasicLogger):
 
         for row in reversed(rows):
             game_element = row.find("span", class_="market_listing_game_name")
-            item_element = row.find("span", class_="market_listing_item_name")
             price_element = row.find("span", class_="market_listing_price")
             gain_or_loss_element = row.find("div", class_="market_listing_gainorloss")
+            history_row_id = row.get("id")
 
-            if not (game_element and item_element and price_element and gain_or_loss_element):
+            if not (game_element and price_element and gain_or_loss_element):
                 raise Exception("Не все элементы получены")
 
+            asset: dict = hover_map[history_row_id]
+            app_id = asset.get("app_id")
+            context_id = asset["context_id"]
+            item_id = asset["item_id"]
+            item: dict = assets[app_id][context_id][item_id]
+
             game_name = game_element.text.strip()
-            item_name = item_element.text.strip()
             gain_or_loss = gain_or_loss_element.text.strip()
             price_text = price_element.text.strip()
-
             price = float(price_text.replace(",", ".").split()[0])
 
-            item_name, count = self._get_item_count(item_name)
+            item_hash_name = item.get("market_hash_name")
+            if not item_hash_name:
+                item_hash_name = f"unknown_{app_id}_{item_id}"
+            count = int(item.get("original_amount"))
 
-            item_stats = aggregated_data[game_name][item_name]
+            item_stats = aggregated_data[app_id][item_hash_name]
+            item_stats.item_name = item.get("market_name")
+            if not item_stats.item_name:
+                item_stats.item_name = f"unknown_{app_id}_{item_id}"
             if gain_or_loss == "+":
                 item_stats.total_bought += count
                 item_stats.sum_bought = round(item_stats.sum_bought + price, 2)
@@ -137,10 +179,19 @@ class Account(BasicLogger):
             else:
                 raise Exception(f"Не найдено gain_or_loss")
 
-        return aggregated_data
+            if not app_id_to_game_name.get(app_id):
+                if app_id == '753':
+                    app_id_to_game_name[app_id] = "Steam"
+                else:
+                    app_id_to_game_name[app_id] = game_name
+
+        return aggregated_data, app_id_to_game_name
 
     def _collect_aggregated_market_history(
-            self, session: requests.Session, aggregated_data: dict, processed_count: int = 0,
+            self, session: requests.Session,
+            aggregated_data: dict,
+            app_id_to_game_name: dict,
+            processed_count: int = 0,
             count_per_request: int = 500
     ) -> (int, dict):
         page_content = self._get_history_page_content(session, 1, 0)
@@ -149,7 +200,7 @@ class Account(BasicLogger):
         total_new_count = total_count - processed_count
         if total_new_count <= 0:
             print("Нет новых записей для обработки")
-            return start_total_count, aggregated_data
+            return start_total_count, aggregated_data, app_id_to_game_name
 
         start = total_new_count
         with tqdm(
@@ -162,34 +213,32 @@ class Account(BasicLogger):
                 start = max(start - new_count, 0)
 
                 page_content = self._get_history_page_content(session, new_count, start)
-                html_content = page_content.get("results_html", "")
                 total_count_now = page_content.get("total_count", 0)
                 total_count_difference = total_count_now - total_count
                 if total_count_difference:
                     total_count = total_count_now
                     start += total_count_difference
                     page_content = self._get_history_page_content(session, new_count, start)
-                    html_content = page_content.get("results_html", "")
 
-                if not html_content:
-                    raise Exception("Не получен results_html")
-
-                aggregated_data = self._aggregate_data(html_content, aggregated_data)
+                aggregated_data, app_id_to_game_name = self._aggregate_data(
+                    page_content, aggregated_data, app_id_to_game_name)
 
                 pbar.update(new_count)
 
-        return start_total_count, aggregated_data
+        return start_total_count, aggregated_data, app_id_to_game_name
 
     @staticmethod
-    def _load_summarize_market_history(file_path: str) -> (int, dict):
+    def _load_summarize_market_history(file_path: str) -> (int, dict, dict):
         file_path = Path(file_path)
         processed_count = 0
         aggregated_data = defaultdict(lambda: defaultdict(MarketItemStats))
+        app_id_to_game_name = {}
         if file_path.exists():
             with open(file_path, "r", encoding="utf-8") as f:
                 saved = json.load(f)
                 processed_count = saved.get("processed_count", 0)
                 old_data = saved.get("aggregated_data", {})
+                app_id_to_game_name = saved.get("app_id_to_game_name", {})
                 for game_name, items in old_data.items():
                     for item_name, stats in items.items():
                         item_stats = aggregated_data[game_name][item_name]
@@ -198,15 +247,21 @@ class Account(BasicLogger):
                         item_stats.sum_bought = stats.get("sum_bought", 0.0)
                         item_stats.sum_sold = stats.get("sum_sold", 0.0)
 
-        return processed_count, aggregated_data
+        return processed_count, aggregated_data, app_id_to_game_name
 
     @staticmethod
-    def _save_summarize_market_history(file_path: str, aggregated_data: dict, processed_count: int) -> None:
+    def _save_summarize_market_history(
+            file_path: str,
+            aggregated_data: dict,
+            app_id_to_game_name: dict,
+            processed_count: int
+    ) -> None:
         serializable_data = {}
         for game_name, items in aggregated_data.items():
             serializable_data[game_name] = {}
             for item_name, stats in items.items():
                 serializable_data[game_name][item_name] = {
+                    "item_name": stats.item_name,
                     "total_bought": stats.total_bought,
                     "total_sold": stats.total_sold,
                     "sum_bought": stats.sum_bought,
@@ -217,6 +272,7 @@ class Account(BasicLogger):
 
         save_object = {
             "processed_count": processed_count,
+            "app_id_to_game_name": app_id_to_game_name,
             "aggregated_data": serializable_data
         }
 
@@ -232,12 +288,13 @@ class Account(BasicLogger):
             json_file_path: str = "data/market_history/summarize.json",
             excel_file_path: str = "data/market_history/summarize.xlsx",
     ) -> None:
-        processed_count, aggregated_data = self._load_summarize_market_history(json_file_path)
+        processed_count, aggregated_data, app_id_to_game_name = self._load_summarize_market_history(json_file_path)
 
-        new_processed_count, aggregated_data = self._collect_aggregated_market_history(
-            session, aggregated_data, processed_count)
+        new_processed_count, aggregated_data, app_id_to_game_name = self._collect_aggregated_market_history(
+            session, aggregated_data, app_id_to_game_name, processed_count)
 
         if new_processed_count:
-            self._save_summarize_market_history(json_file_path, aggregated_data, new_processed_count)
+            self._save_summarize_market_history(
+                json_file_path, aggregated_data, app_id_to_game_name, new_processed_count)
         self.excel_maker.summarize_json_to_excel(json_file_path, excel_file_path)
     # endregion

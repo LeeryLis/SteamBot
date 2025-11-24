@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 @dataclass
 class MarketItemStats:
+    item_name: str = ""
     total_bought: int = 0
     total_sold: int = 0
     sum_bought: float = 0.0

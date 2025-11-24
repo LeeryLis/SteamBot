@@ -29,15 +29,15 @@ class SummarizeToExcel:
             idx += 1
 
     @staticmethod
-    def _load_aggregated(json_path: Path) -> Dict[str, Dict]:
+    def _load_aggregated(json_path: Path) -> (Dict[str, Dict], Dict[str, str]):
         with open(json_path, "r", encoding="utf-8") as f:
             saved = json.load(f)
-        return saved.get("aggregated_data", {})
+        return saved.get("aggregated_data", {}), saved.get("app_id_to_game_name", {})
 
     @staticmethod
     def _prepare_rows_from_items(items: Dict) -> pd.DataFrame:
         rows = []
-        for item_name, stats in items.items():
+        for item_hash_name, stats in items.items():
             sum_bought = round(float(stats.get("sum_bought", 0.0)), 2)
             sum_sold = round(float(stats.get("sum_sold", 0.0)), 2)
 
@@ -47,7 +47,7 @@ class SummarizeToExcel:
                 ratio = None
 
             rows.append({
-                "item_name": item_name,
+                "item_name": stats.get("item_name"),
                 "total_bought": int(stats.get("total_bought", 0)),
                 "total_sold": int(stats.get("total_sold", 0)),
                 "sum_bought": sum_bought,
@@ -236,7 +236,7 @@ class SummarizeToExcel:
         if not json_path.exists():
             raise FileNotFoundError(f"Файл не найден: {json_path}")
 
-        aggregated = self._load_aggregated(json_path)
+        aggregated, app_id_to_game_name = self._load_aggregated(json_path)
         if not aggregated:
             raise ValueError("В файле нет aggregated_data или он пуст.")
 
@@ -246,7 +246,8 @@ class SummarizeToExcel:
         with pd.ExcelWriter(excel_path, engine="openpyxl", date_format="YYYY-MM-DD") as writer:
             existing_sheet_names = set()
 
-            for game_name, items in games.items():
+            for app_id, items in games.items():
+                game_name = app_id_to_game_name.get(app_id)
                 df = self._prepare_rows_from_items(items)
 
                 sheet_name = self._safe_sheet_name(game_name, existing_sheet_names)
