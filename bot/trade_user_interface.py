@@ -137,9 +137,8 @@ class TradeUserInterface(BasicConsole):
     # region Login
     @command(
         aliases=["l", "login"],
-        description="Use saved cookies. The connection will be tested. "
-                    "If the cookies are outdated, a new account login will be performed "
-                    "(new cookies will be saved)",
+        description="Зайти в аккаунт Steam (если отсутствует SHARED_SECRET В .env, "
+                    "то вводить данные нужно будет вручную)"
     )
     def _login(self) -> None:
         login_executor = LoginExecutorSelenium(
@@ -190,7 +189,7 @@ class TradeUserInterface(BasicConsole):
     # region Info
     @command(
         aliases=["info"],
-        description="Get information about sell orders for any game",
+        description="Получить информацию о выставленных на продажу вещах",
         usage="info <game_1> [game_2] ... [game_N]",
     )
     def get_multiple_sell_orders_info(self, game_names: list[str]) -> bool:
@@ -234,7 +233,7 @@ class TradeUserInterface(BasicConsole):
 
     @command(
         aliases=["inv"],
-        description="Get count of marketable items in the inventory",
+        description="Получить количество доступных для продажи вещей в инвентаре",
         usage="inv <game_1> [game_2] ... [game_N]",
     )
     def get_multiple_marketable_inventory(self, game_names: list[str]) -> bool:
@@ -266,7 +265,7 @@ class TradeUserInterface(BasicConsole):
 
     @command(
         aliases=["bl", "balance", "money"],
-        description="Get account balance",
+        description="Вывести баланс кошелька Steam",
         usage="balance",
     )
     def get_account_balance(self) -> None:
@@ -281,7 +280,7 @@ class TradeUserInterface(BasicConsole):
 
     @command(
         aliases=["history", "summarize"],
-        description="Collect market history",
+        description="Собрать историю торговой площадки",
         usage="history"
     )
     def summarize_market_history(self) -> None:
@@ -294,7 +293,7 @@ class TradeUserInterface(BasicConsole):
     # region Fundamental commands
     @command(
         aliases=["us", "update_sell_orders"],
-        description="Update sell orders (remove incorrect orders)",
+        description="Обновить выставленные на продажу ордера (снять нерелевантные)",
         usage="us <game>"
     )
     def update_sell_orders(self, game_name: str) -> bool:
@@ -306,7 +305,7 @@ class TradeUserInterface(BasicConsole):
 
     @command(
         aliases=["ub", "update_buy_orders"],
-        description="Update buy orders (remove incorrect AND create new orders if there is a suitable price)",
+        description="Обновить запросы на покупку (убрать нерелевантные и создать новые подходящие)",
         usage="ub <game>",
         flags={
             "use_session": (["-s"], "Использовать браузерную сессию для обновления 'buy order'")
@@ -329,7 +328,7 @@ class TradeUserInterface(BasicConsole):
 
     @command(
         aliases=["si", "sell_inventory"],
-        description="Create sell orders from inventory items",
+        description="Продать вещи из инвентаря",
         usage="si <game>",
     )
     def sell_inventory(self, game_name: str) -> bool:
@@ -341,7 +340,7 @@ class TradeUserInterface(BasicConsole):
 
     @command(
         aliases=["conf", "confirm_sell"],
-        description="Confirm all sell orders (after sell inventory)",
+        description="Подтверждение создание лотов (когда требуется мобильное подтверждение)",
     )
     def confirm_all_sell_orders(self) -> None:
         self._login()

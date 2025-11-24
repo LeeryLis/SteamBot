@@ -1,3 +1,4 @@
+import time
 from typing import Any
 
 import requests
@@ -38,7 +39,6 @@ class Marketplace(BasicLogger):
     def save_cache_sales_per_day(self):
         self.cache_sales_per_day.save_cache(self.cache_sales_per_day_filename)
 
-    @handle_status_codes_using_attempts()
     @rate_limited(6)
     def get_item_market_data(self, session: requests.Session, item_name: str) -> requests.Response | None:
         params = {
@@ -94,7 +94,6 @@ class Marketplace(BasicLogger):
 
         return sales_per_day if sales_per_day > 0 else 1
 
-    @handle_status_codes_using_attempts()
     @rate_limited(6)
     def get_item_public_info(self, session: requests.Session, item_name: str) -> requests.Response:
         params = {
@@ -129,7 +128,7 @@ class Marketplace(BasicLogger):
         return response
 
     @handle_status_codes_using_attempts()
-    @rate_limited(0.3)
+    @rate_limited(1)
     def create_buy_order(
             self, session: requests.Session,
             item_name: str, price: float, quantity: int, confirmation_id: str = '0'
@@ -163,7 +162,7 @@ class Marketplace(BasicLogger):
         return response
 
     @handle_status_codes_using_attempts()
-    @rate_limited(0.3)
+    @rate_limited(1)
     def create_sell_order(self, session: requests.Session, steam_id: str, asset_id: int, amount: int, price: float) -> requests.Response:
         data = {
             'sessionid': session.cookies.get("sessionid", domain="steamcommunity.com"),
@@ -204,7 +203,7 @@ class Marketplace(BasicLogger):
         return response
 
     @handle_status_codes_using_attempts()
-    @rate_limited(0.3)
+    @rate_limited(1)
     def cancel_sell_order(self, session: requests.Session, sell_listing_id: int) -> requests.Response:
         url = f"https://steamcommunity.com/market/removelisting/{sell_listing_id}"
         data = {
@@ -230,7 +229,7 @@ class Marketplace(BasicLogger):
         return response
 
     @handle_status_codes_using_attempts()
-    @rate_limited(0.3)
+    @rate_limited(1)
     def cancel_buy_order(self, session: requests.Session, buy_order_id: int) -> requests.Response:
         url = "https://steamcommunity.com/market/cancelbuyorder/"
         headers = {

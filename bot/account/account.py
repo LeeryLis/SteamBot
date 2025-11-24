@@ -183,6 +183,7 @@ class Account(BasicLogger):
     @staticmethod
     def _load_summarize_market_history(file_path: str) -> (int, dict):
         file_path = Path(file_path)
+        processed_count = 0
         aggregated_data = defaultdict(lambda: defaultdict(MarketItemStats))
         if file_path.exists():
             with open(file_path, "r", encoding="utf-8") as f:
@@ -196,8 +197,6 @@ class Account(BasicLogger):
                         item_stats.total_sold = stats.get("total_sold", 0)
                         item_stats.sum_bought = stats.get("sum_bought", 0.0)
                         item_stats.sum_sold = stats.get("sum_sold", 0.0)
-        else:
-            processed_count = 0
 
         return processed_count, aggregated_data
 
@@ -240,5 +239,5 @@ class Account(BasicLogger):
 
         if new_processed_count:
             self._save_summarize_market_history(json_file_path, aggregated_data, new_processed_count)
-            self.excel_maker.summarize_json_to_excel(json_file_path, excel_file_path)
+        self.excel_maker.summarize_json_to_excel(json_file_path, excel_file_path)
     # endregion
