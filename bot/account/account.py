@@ -245,6 +245,7 @@ class Account(BasicLogger):
                 for game_name, items in old_data.items():
                     for item_name, stats in items.items():
                         item_stats = aggregated_data[game_name][item_name]
+                        item_stats.item_name = stats.get("item_name", "")
                         item_stats.total_bought = stats.get("total_bought", 0)
                         item_stats.total_sold = stats.get("total_sold", 0)
                         item_stats.sum_bought = stats.get("sum_bought", 0.0)
