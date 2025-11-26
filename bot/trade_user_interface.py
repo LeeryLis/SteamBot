@@ -29,6 +29,12 @@ class TradeUserInterface(BasicConsole):
         self.session: requests.Session = requests.Session()
         self.console = Console()
         load_dotenv()
+        self.login_executor = LoginExecutorSelenium(
+            os.getenv('USER_NAME'),
+            os.getenv('PASSWORD'),
+            os.getenv('SHARED_SECRET'),
+            self.session
+        )
 
     # region Автоматизация
     @command(
@@ -141,18 +147,11 @@ class TradeUserInterface(BasicConsole):
                     "то вводить данные нужно будет вручную)"
     )
     def _login(self) -> None:
-        login_executor = LoginExecutorSelenium(
-            os.getenv('USER_NAME'),
-            os.getenv('PASSWORD'),
-            os.getenv('SHARED_SECRET'),
-            self.session
-        )
         try:
-            login_executor.login()
+            self.login_executor.login_or_refresh_cookies()
         except Exception as e:
             self.console.print(Text(f"Error: {e}. Steam login failed"))
             return
-        # self.console.print(Text("Вы успешно вошли в аккаунт"))
     # endregion
 
     # region Bot
@@ -204,8 +203,6 @@ class TradeUserInterface(BasicConsole):
         return True
 
     def _get_sell_orders_info(self, game_name: str) -> None:
-        self._login()
-
         if trade_bot := self._get_bot(game_name):
             sell_orders = dict()
             try:
@@ -248,8 +245,6 @@ class TradeUserInterface(BasicConsole):
         return True
 
     def _get_marketable_inventory(self, game_name: str) -> None:
-        self._login()
-
         if trade_bot := self._get_bot(game_name):
             self.console.print(Text(f"---[ {game_name} ]---", style="bold green"))
             try:
@@ -269,8 +264,6 @@ class TradeUserInterface(BasicConsole):
         usage="balance",
     )
     def get_account_balance(self) -> None:
-        self._login()
-
         account = Account()
         balance, pending, total = account.get_account_balance(self.session)
 
@@ -284,8 +277,6 @@ class TradeUserInterface(BasicConsole):
         usage="history"
     )
     def summarize_market_history(self) -> None:
-        self._login()
-
         account = Account()
         account.summarize_market_history(self.session)
     # endregion
@@ -297,8 +288,6 @@ class TradeUserInterface(BasicConsole):
         usage="us <game>"
     )
     def update_sell_orders(self, game_name: str) -> bool:
-        self._login()
-
         if trade_bot := self._get_bot(game_name):
             return not handle_429_status_code(trade_bot.update_sell_orders, self.session)
         return False
@@ -312,8 +301,6 @@ class TradeUserInterface(BasicConsole):
         }
     )
     def update_buy_orders(self, game_name: str, use_session: bool = False) -> bool:
-        self._login()
-
         if use_session:
             sessionid = input("sessionid: ")
             steamLoginSecure = input("steamLoginSecure: ")
@@ -332,8 +319,6 @@ class TradeUserInterface(BasicConsole):
         usage="si <game>",
     )
     def sell_inventory(self, game_name: str) -> bool:
-        self._login()
-
         if trade_bot := self._get_bot(game_name):
             return not handle_429_status_code(trade_bot.sell_inventory, self.session)
         return False
@@ -365,8 +350,6 @@ class TradeUserInterface(BasicConsole):
         }
     )
     def dst_cancel_sell_spiffy(self, price: float = 0, cancel: bool = False) -> bool:
-        self._login()
-
         if trade_bot := self._get_bot("dst"):
             if price != 0:
                 return not handle_429_status_code(trade_bot.dst_sell_inventory, self.session, price)
@@ -385,8 +368,6 @@ class TradeUserInterface(BasicConsole):
         }
     )
     def dst_cancel_sell_distinguished(self, price: float = 0, cancel: bool = False) -> bool:
-        self._login()
-
         if trade_bot := self._get_bot("dst"):
             if price != 0:
                 return not handle_429_status_code(trade_bot.dst_sell_inventory, self.session, price, False)

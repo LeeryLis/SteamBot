@@ -1,9 +1,11 @@
 import subprocess
 import time
+from datetime import datetime, timedelta, timezone
 
 import requests
 import pickle
 import os
+import json
 
 from requests.cookies import RequestsCookieJar
 from selenium import webdriver
@@ -12,7 +14,6 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from contextlib import contextmanager
 
 from .guard import generate_one_time_code
 from enums import Urls
@@ -21,37 +22,43 @@ from _root import project_root
 
 class LoginExecutorSelenium:
     def __init__(self, username: str, password: str, shared_secret: str,
-                 session: requests.Session) -> None:
+                 session: requests.Session = None) -> None:
         self.username = username
         self.password = password
         self.shared_secret = shared_secret
         self.session = session
 
         self.urls = {
-            Urls.COMMUNITY: [Urls.MY_INVENTORY, Urls.COMMUNITY + "/login/home/?goto=login"],
-            Urls.STORE: [Urls.ACCOUNT, Urls.STORE + "/login"]
+            Urls.STORE: [Urls.ACCOUNT, Urls.STORE + "/login"],
+            Urls.COMMUNITY: [Urls.MY_INVENTORY, Urls.COMMUNITY + "/login/home/?goto=login"]
         }
 
+        self.first_login_time_file = f"{project_root}/data/saved_session/first_login.json"
         self.cookies_file = f"{project_root}/data/saved_session/cookies.pkl"
         self.steam_id_file = f"{project_root}/data/saved_session/steam_id.txt"
         self.selenium_profile_dir = f"{project_root}/data/saved_session/selenium_profile"
 
-    def login(self) -> None:
-        self._load_cookies_from_file()
+    def login_or_refresh_cookies(self, cookie_max_age: timedelta = timedelta(hours=24)) -> None:
+        steam_login_refresh_time = self.session.cookies.get("steamDidLoginRefresh", domain=".steamcommunity.com")
+        if steam_login_refresh_time is None:
+            self._load_cookies_from_file()
 
-        urls_to_login = {}
-        for domain, (url_check, url_login) in self.urls.items():
-            is_logged, err = self._is_logged(url_check)
-            if err:
-                print("Error: login check failed")
-                return
-            if not is_logged:
-                urls_to_login[domain] = (url_check, url_login)
-        if urls_to_login:
-            print("Refresh cookies...")
-            manually = self.shared_secret == ""
-            self._selenium_login(urls_to_login, manually)
-            self._save_cookies_to_file()
+        if steam_login_refresh_time is None:
+            steam_login_refresh_time = self._load_first_login_time()
+
+        if steam_login_refresh_time is not None:
+            try:
+                timestamp = int(steam_login_refresh_time)
+                last_refresh = datetime.fromtimestamp(timestamp, timezone.utc)
+                if datetime.now(timezone.utc) - last_refresh < cookie_max_age:
+                    return
+                print("Refresh cookies...")
+            except ValueError:
+                pass
+
+        manually = (self.shared_secret == "" and not steam_login_refresh_time)
+        self._selenium_login(manually)
+        self._save_cookies_to_file()
 
     def _is_logged(self, url, attempts_count: int = 3) -> (bool, bool):
         for attempt in range(attempts_count):
@@ -63,8 +70,7 @@ class LoginExecutorSelenium:
                 ), False
             except (requests.exceptions.ConnectionError,
                     requests.exceptions.ReadTimeout,
-                    requests.exceptions.RequestException) as e:
-                # print(f"Warning: login check failed for {url} (attempt {attempt + 1}/{attempts_count}: {e}")
+                    requests.exceptions.RequestException):
                 time.sleep(1)
         return False, True
 
@@ -114,17 +120,19 @@ class LoginExecutorSelenium:
             return False
 
     def _get_selenium_cookies_into_requests_session(self, driver) -> None:
-        jar = RequestsCookieJar()
-        for cookie in driver.get_cookies():
-            jar.set(
-                name=cookie['name'],
-                value=cookie['value'],
-                domain=cookie['domain'],
-                path=cookie.get('path', '/'),
-                secure=cookie.get('secure', False),
-                rest={'HttpOnly': cookie.get('httpOnly', False)}
-            )
-        self.session.cookies.update(jar)
+        for domain in self.urls.keys():
+            driver.get(domain)
+            jar = RequestsCookieJar()
+            for cookie in driver.get_cookies():
+                jar.set(
+                    name=cookie['name'],
+                    value=cookie['value'],
+                    domain=cookie['domain'],
+                    path=cookie.get('path', '/'),
+                    secure=cookie.get('secure', False),
+                    rest={'HttpOnly': cookie.get('httpOnly', False)}
+                )
+            self.session.cookies.update(jar)
 
     def _fill_login_form(self, driver, url: str, manually: bool = False) -> None:
         driver.get(url)
@@ -144,7 +152,7 @@ class LoginExecutorSelenium:
             password_input.send_keys(self.password)
 
             login_button = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "button[type='submit'], div.login_btn_signin"))
+                EC.element_to_be_clickable((By.XPATH, '//div[@data-featuretarget="login"]//button[@type="submit"]'))
             )
             login_button.click()
 
@@ -168,7 +176,26 @@ class LoginExecutorSelenium:
 
         self._get_selenium_cookies_into_requests_session(driver)
 
-    def _selenium_login(self, urls_to_login: dict, manually: bool = False) -> None:
+    def _save_first_login_time(self) -> None:
+        if os.path.exists(self.first_login_time_file):
+            return
+
+        first_login_time = int(datetime.now(timezone.utc).timestamp())
+        with open(self.first_login_time_file, "w", encoding="utf-8") as f:
+            json.dump({"first_login_time": first_login_time}, f)
+
+    def _load_first_login_time(self) -> str | None:
+        if not os.path.exists(self.first_login_time_file):
+            return None
+
+        with open(self.first_login_time_file, "r", encoding="utf-8") as f:
+            try:
+                data = json.load(f)
+                return data.get("first_login_time")
+            except (json.JSONDecodeError, ValueError):
+                return None
+
+    def _selenium_login(self, manually: bool = False) -> None:
         options = Options()
         if not manually:
             options.add_argument("--headless=new")  # headless режим
@@ -192,14 +219,14 @@ class LoginExecutorSelenium:
         driver = webdriver.Chrome(service=service, options=options)
         self._load_cookies_into_selenium_driver(driver)
 
-        for domain, (url_check, url_login) in urls_to_login.items():
-            is_logged, err = self._is_logged(url_check)
-            if err:
-                print("Error: login check failed")
-            if not is_logged:
-                try:
+        try:
+            for domain, (url_check, url_login) in self.urls.items():
+                is_logged, err = self._is_logged(url_check)
+                if err:
+                    print("Error: login check failed")
+                if not is_logged:
                     self._fill_login_form(driver, url_login, manually)
-                except:
-                    pass
+                    self._save_first_login_time()
 
-        driver.quit()
+        finally:
+            driver.quit()

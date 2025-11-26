@@ -5,6 +5,7 @@ import bs4.element
 import requests
 from bs4 import BeautifulSoup
 
+from steam_lib import refresh_cookies
 from utils import handle_status_codes_using_attempts
 from tools.rate_limiter import rate_limited
 from bot.marketplace.marketplace_item_parser.sell_order_item import SellOrderItem
@@ -34,6 +35,7 @@ class MarketplaceItemParser(BasicLogger):
 
     @handle_status_codes_using_attempts()
     @rate_limited(6)
+    @refresh_cookies()
     def get_sell_orders_page(self, session: requests.Session, is_check_connection: bool = False) -> requests.Response:
         url = f"{Urls.MARKET}/mylistings/render/?query=&start=0&count=-1"
         headers = {
@@ -67,6 +69,7 @@ class MarketplaceItemParser(BasicLogger):
 
     @handle_status_codes_using_attempts()
     @rate_limited(6)
+    @refresh_cookies()
     def _get_buy_orders_page(self, session: requests.Session) -> requests.Response:
         url = f"{Urls.MARKET}"
         headers = {

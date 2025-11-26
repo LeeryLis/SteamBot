@@ -8,6 +8,7 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 from collections import defaultdict
 
+from steam_lib import refresh_cookies
 from tools.rate_limiter import rate_limited
 from utils import handle_status_codes_using_attempts
 from tools import BasicLogger
@@ -34,6 +35,7 @@ class Account(BasicLogger):
 
     @handle_status_codes_using_attempts()
     @rate_limited(1)
+    @refresh_cookies()
     def get_account_page(self, session: requests.Session) -> requests.Response:
         url = Urls.ACCOUNT
         headers = {
@@ -79,6 +81,7 @@ class Account(BasicLogger):
     # region Market History
     @staticmethod
     @rate_limited(3)
+    @refresh_cookies()
     def _get_history_page_content(session: requests.Session, count: int, start: int) -> dict:
         url = f'{Urls.HISTORY}/render/?count={count}&start={start}'
 

@@ -1,6 +1,7 @@
 import os
 import requests
 
+from steam_lib import refresh_cookies
 from bot.inventory.inventory_item import InventoryItem
 from tools.rate_limiter import rate_limited
 from utils import handle_status_codes_using_attempts
@@ -26,6 +27,7 @@ class Inventory(BasicLogger):
 
     @handle_status_codes_using_attempts()
     @rate_limited(2)
+    @refresh_cookies()
     def get_inventory_page(
             self, session: requests.Session, count: int, start_asset_id: str = None
     ) -> requests.Response:

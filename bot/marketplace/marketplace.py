@@ -5,6 +5,7 @@ import requests
 from tools import CustomTTLCache
 from urllib.parse import quote
 
+from steam_lib import refresh_cookies
 from utils import handle_status_codes_using_attempts
 from tools.file_managers.item_manager import ItemManager
 from tools.rate_limiter import rate_limited
@@ -40,6 +41,7 @@ class Marketplace(BasicLogger):
         self.cache_sales_per_day.save_cache(self.cache_sales_per_day_filename)
 
     @rate_limited(6)
+    @refresh_cookies()
     def get_item_market_data(self, session: requests.Session, item_name: str) -> requests.Response | None:
         params = {
             "country": "RU",
@@ -95,6 +97,7 @@ class Marketplace(BasicLogger):
         return sales_per_day if sales_per_day > 0 else 1
 
     @rate_limited(6)
+    @refresh_cookies()
     def get_item_public_info(self, session: requests.Session, item_name: str) -> requests.Response:
         params = {
             "currency": self.currency,
@@ -129,6 +132,7 @@ class Marketplace(BasicLogger):
 
     @handle_status_codes_using_attempts()
     @rate_limited(1)
+    @refresh_cookies()
     def create_buy_order(
             self, session: requests.Session,
             item_name: str, price: float, quantity: int, confirmation_id: str = '0'
@@ -163,6 +167,7 @@ class Marketplace(BasicLogger):
 
     @handle_status_codes_using_attempts()
     @rate_limited(1)
+    @refresh_cookies()
     def create_sell_order(self, session: requests.Session, steam_id: str, asset_id: int, amount: int, price: float) -> requests.Response:
         data = {
             'sessionid': session.cookies.get("sessionid", domain="steamcommunity.com"),
@@ -204,6 +209,7 @@ class Marketplace(BasicLogger):
 
     @handle_status_codes_using_attempts()
     @rate_limited(1)
+    @refresh_cookies()
     def cancel_sell_order(self, session: requests.Session, sell_listing_id: int) -> requests.Response:
         url = f"https://steamcommunity.com/market/removelisting/{sell_listing_id}"
         data = {
@@ -230,6 +236,7 @@ class Marketplace(BasicLogger):
 
     @handle_status_codes_using_attempts()
     @rate_limited(1)
+    @refresh_cookies()
     def cancel_buy_order(self, session: requests.Session, buy_order_id: int) -> requests.Response:
         url = "https://steamcommunity.com/market/cancelbuyorder/"
         headers = {
