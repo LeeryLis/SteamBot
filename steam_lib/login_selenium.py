@@ -33,7 +33,7 @@ class LoginExecutorSelenium:
             Urls.COMMUNITY: [Urls.MY_INVENTORY, Urls.COMMUNITY + "/login/home/?goto=login"]
         }
 
-        self.first_login_time_file = f"{project_root}/data/saved_session/first_login.json"
+        self.last_login_time_file = f"{project_root}/data/saved_session/last_login.json"
         self.cookies_file = f"{project_root}/data/saved_session/cookies.pkl"
         self.steam_id_file = f"{project_root}/data/saved_session/steam_id.txt"
         self.selenium_profile_dir = f"{project_root}/data/saved_session/selenium_profile"
@@ -44,7 +44,7 @@ class LoginExecutorSelenium:
             self._load_cookies_from_file()
 
         if steam_login_refresh_time is None:
-            steam_login_refresh_time = self._load_first_login_time()
+            steam_login_refresh_time = self._load_last_login_time()
 
         if steam_login_refresh_time is not None:
             try:
@@ -89,35 +89,6 @@ class LoginExecutorSelenium:
         except FileNotFoundError:
             return False
         return True
-
-    def _load_cookies_into_selenium_driver(self, driver) -> bool:
-        try:
-            with open(self.cookies_file, "rb") as f:
-                cookies = pickle.load(f)
-
-            for domain in self.urls.keys():
-                driver.get(domain)
-                for c in cookies:
-                    if domain.endswith(c.domain):
-                        cookie_dict = {
-                            "name": c.name,
-                            "value": c.value,
-                            "domain": c.domain,
-                            "path": c.path,
-                            "secure": c.secure,
-                        }
-                        if c.expires:
-                            cookie_dict["expiry"] = c.expires
-                        try:
-                            driver.add_cookie(cookie_dict)
-                        except Exception as e:
-                            print(f"Не удалось добавить куку {c.name}: {e}")
-                driver.refresh()
-                # Для полного обновления (особенно sessionid)
-                self._get_selenium_cookies_into_requests_session(driver)
-            return True
-        except FileNotFoundError:
-            return False
 
     def _get_selenium_cookies_into_requests_session(self, driver) -> None:
         for domain in self.urls.keys():
@@ -176,22 +147,19 @@ class LoginExecutorSelenium:
 
         self._get_selenium_cookies_into_requests_session(driver)
 
-    def _save_first_login_time(self) -> None:
-        if os.path.exists(self.first_login_time_file):
-            return
+    def _save_last_login_time(self) -> None:
+        last_login_time = int(datetime.now(timezone.utc).timestamp())
+        with open(self.last_login_time_file, "w", encoding="utf-8") as f:
+            json.dump({"last_login_time": last_login_time}, f)
 
-        first_login_time = int(datetime.now(timezone.utc).timestamp())
-        with open(self.first_login_time_file, "w", encoding="utf-8") as f:
-            json.dump({"first_login_time": first_login_time}, f)
-
-    def _load_first_login_time(self) -> str | None:
-        if not os.path.exists(self.first_login_time_file):
+    def _load_last_login_time(self) -> str | None:
+        if not os.path.exists(self.last_login_time_file):
             return None
 
-        with open(self.first_login_time_file, "r", encoding="utf-8") as f:
+        with open(self.last_login_time_file, "r", encoding="utf-8") as f:
             try:
                 data = json.load(f)
-                return data.get("first_login_time")
+                return data.get("last_login_time")
             except (json.JSONDecodeError, ValueError):
                 return None
 
@@ -216,17 +184,16 @@ class LoginExecutorSelenium:
         service = Service(log_output=os.devnull)
         service.creation_flags = subprocess.CREATE_NO_WINDOW
 
-        driver = webdriver.Chrome(service=service, options=options)
-        self._load_cookies_into_selenium_driver(driver)
+        with webdriver.Chrome(service=service, options=options) as driver:
+            self._get_selenium_cookies_into_requests_session(driver)
+            self._save_last_login_time()
 
-        try:
-            for domain, (url_check, url_login) in self.urls.items():
-                is_logged, err = self._is_logged(url_check)
-                if err:
-                    print("Error: login check failed")
-                if not is_logged:
-                    self._fill_login_form(driver, url_login, manually)
-                    self._save_first_login_time()
-
-        finally:
-            driver.quit()
+            try:
+                for domain, (url_check, url_login) in self.urls.items():
+                    is_logged, err = self._is_logged(url_check)
+                    if err:
+                        print("Error: login check failed")
+                    if not is_logged:
+                        self._fill_login_form(driver, url_login, manually)
+            except Exception as ex:
+                print(f"Error while using webdriver: {ex}")
