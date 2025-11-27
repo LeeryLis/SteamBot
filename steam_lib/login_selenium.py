@@ -163,8 +163,8 @@ class LoginExecutorSelenium:
 
     def _selenium_login(self, manually: bool = False) -> None:
         options = Options()
-        if not manually:
-            options.add_argument("--headless=new")  # headless режим
+        # if not manually:
+        #     options.add_argument("--headless=new")  # headless режим
         options.add_argument(f"--user-data-dir={self.selenium_profile_dir}")
         options.add_argument("--disable-gpu")
         options.add_argument("--disable-software-rasterizer")
@@ -184,7 +184,6 @@ class LoginExecutorSelenium:
 
         with webdriver.Chrome(service=service, options=options) as driver:
             self._get_selenium_cookies_into_requests_session(driver)
-            self._save_last_login_time()
 
             try:
                 for domain, (url_check, url_login) in self.urls.items():
@@ -192,7 +191,8 @@ class LoginExecutorSelenium:
                     if err:
                         print("Error: login check failed")
                     if not is_logged:
+                        self._save_last_login_time()
                         self._fill_login_form(driver, url_login, manually)
-                self._get_selenium_cookies_into_requests_session(driver)
+                        self._get_selenium_cookies_into_requests_session(driver)
             except Exception as ex:
                 print(f"Error while using webdriver: {ex}")
