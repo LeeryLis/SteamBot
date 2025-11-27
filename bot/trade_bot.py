@@ -56,10 +56,10 @@ class TradeBot(BasicLogger):
 
     def _cancel_incorrect_buy_orders(
             self, session: requests.Session, buy_order: BuyOrderItem, market_data: dict[str, Any],
-            sales_per_day: int) -> bool:
+            sales_per_day: int) -> None:
         max_number_prices_used = sales_per_day // 2
         if self.price_analysis.is_buy_order_relevant(market_data, sales_per_day, buy_order, max_number_prices_used):
-            return False
+            return
 
         response = self.marketplace.cancel_buy_order(session, buy_order.order_id)
         if response.status_code == 200:
@@ -67,13 +67,11 @@ class TradeBot(BasicLogger):
                 f"Cancel buy order '{buy_order.name}': "
                 f"{response.status_code} {response.reason}"
             )
-            return True
         else:
-            self.logger.info(
+            self.logger.error(
                 f"Cancel buy order '{buy_order.name}': "
                 f"{response.status_code} {response.reason}"
             )
-            return False
 
     def update_buy_orders(self, session: requests.Session) -> None:
         """
@@ -100,8 +98,7 @@ class TradeBot(BasicLogger):
                 continue
 
             if buy_order := actual_buy_orders.get(item_name):
-                if not self._cancel_incorrect_buy_orders(session, buy_order, market_data, sales_per_day):
-                    continue
+                self._cancel_incorrect_buy_orders(session, buy_order, market_data, sales_per_day)
 
             recommended_buy_price = self.price_analysis.recommend_buy_price(
                 market_data, sales_per_day, sales_per_day // 2)
@@ -224,35 +221,29 @@ class TradeBot(BasicLogger):
             self._confirm_all_sell_orders(session)
 
     def _sell_item(
-            self, session: requests.Session, item: InventoryItem, price: float, max_attempts: int = 4,
-            log_success: bool = True
+            self, session: requests.Session, item: InventoryItem, price: float, log_success: bool = True
     ) -> None:
         for asset_id in tqdm(item.list_asset_id, desc=f"Sell '{item.name}'", unit="item", ncols=Config.TQDM_CONSOLE_WIDTH):
-            for attempt in range(max_attempts):
-                response = self.marketplace.create_sell_order(
-                    session,
-                    os.getenv('STEAM_ID'),
-                    asset_id,
-                    1,
-                    price
-                )
+            response = self.marketplace.create_sell_order(
+                session,
+                os.getenv('STEAM_ID'),
+                asset_id,
+                1,
+                price
+            )
 
-                if response.status_code != 200:
-                    break
-
-                if response.json().get("success"):
-                    if log_success:
-                        self.logger.info(
-                            f"Продажа '{item.name}' ({round(price, 2)}): "
-                            f"{response.status_code} {response.reason}"
-                        )
-                    self._item_sold_confirmation_checker(session)
-                    break
-
-                self.logger.debug(
-                    f"Продажа '{item.name}' ({round(price, 2)}): "
-                    f"{response.text}"
-                )
+            if log_success:
+                if response.status_code == 200:
+                    self.logger.info(
+                        f"Sell '{item.name}' ({round(price, 2)}): "
+                        f"{response.status_code} {response.reason}"
+                    )
+                else:
+                    self.logger.error(
+                        f"Sell '{item.name}' ({round(price, 2)}): "
+                        f"{response.status_code} {response.reason}"
+                    )
+            self._item_sold_confirmation_checker(session)
 
     def sell_inventory(self, session: requests.Session) -> None:
         inventory_items = self.inventory.get_inventory_items(session)

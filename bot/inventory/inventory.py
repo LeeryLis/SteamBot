@@ -1,11 +1,10 @@
 import os
 import requests
 
-from steam_lib import refresh_cookies
 from bot.inventory.inventory_item import InventoryItem
 from tools.rate_limiter import rate_limited
-from utils import handle_status_codes_using_attempts
 from tools import BasicLogger
+from utils.web_utils import api_request
 
 from enums import Urls
 
@@ -25,27 +24,22 @@ class Inventory(BasicLogger):
         self.app_id = app_id
         self.context_id = context_id
 
-    @handle_status_codes_using_attempts()
     @rate_limited(2)
-    @refresh_cookies()
     def get_inventory_page(
             self, session: requests.Session, count: int, start_asset_id: str = None
     ) -> requests.Response:
-        url = f"{Urls.INVENTORY}/{os.getenv('STEAM_ID')}/{self.app_id}/{self.context_id}"
         params = {
-            "l": "english",  # Язык ответа
+            "l": "english",
             "count": count,  # Максимальное количество предметов за один запрос
             "start_assetid": start_asset_id  # Последний полученный id при последовательном получении большого инвентаря
         }
-
-        response = session.get(url, params=params)
-
-        if response.status_code != 200:
-            self.logger.error(
-                f"Ошибка при получении инвентаря: "
-                f"{response.status_code} {response.reason}")
-
-        return response
+        return api_request(
+            session,
+            "GET",
+            f"{Urls.INVENTORY}/{os.getenv('STEAM_ID')}/{self.app_id}/{self.context_id}",
+            params=params,
+            logger=self.logger
+        )
 
     def get_inventory(self, session: requests.Session, count_const: int = 1000) -> list[requests.Response] | None:
         result = []

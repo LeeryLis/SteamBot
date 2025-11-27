@@ -5,6 +5,8 @@ class Urls:
     INVENTORY = "https://steamcommunity.com/inventory"
     MY_INVENTORY = "https://steamcommunity.com/my/inventory"
     MARKET = "https://steamcommunity.com/market"
+    MARKET_ITEM_ORDERS_HISTOGRAM = "https://steamcommunity.com/market/itemordershistogram"
+    MARKET_PRICE_OVERVIEW = "https://steamcommunity.com/market//priceoverview"
     ACCOUNT = "https://store.steampowered.com/account"
     STORE = "https://store.steampowered.com"
     HISTORY = "https://steamcommunity.com/market/myhistory"

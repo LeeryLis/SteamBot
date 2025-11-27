@@ -1,18 +1,16 @@
 import re
 
-import os
 import bs4.element
 import requests
 from bs4 import BeautifulSoup
 
-from steam_lib import refresh_cookies
-from utils import handle_status_codes_using_attempts
 from tools.rate_limiter import rate_limited
 from bot.marketplace.marketplace_item_parser.sell_order_item import SellOrderItem
 from bot.marketplace.marketplace_item_parser.buy_order_item import BuyOrderItem
 from utils.exceptions import TooManyRequestsError
 from enums import Urls
 from tools import BasicLogger
+from utils.web_utils import api_request
 
 
 class MarketplaceItemParser(BasicLogger):
@@ -33,81 +31,48 @@ class MarketplaceItemParser(BasicLogger):
         self.sell_orders: dict[str, list[SellOrderItem]] = {}
         self.buy_orders: dict[str, BuyOrderItem] = {}
 
-    @handle_status_codes_using_attempts()
     @rate_limited(6)
-    @refresh_cookies()
-    def get_sell_orders_page(self, session: requests.Session, is_check_connection: bool = False) -> requests.Response:
-        url = f"{Urls.MARKET}/mylistings/render/?query=&start=0&count=-1"
-        headers = {
-            'Accept': 'text/javascript, text/html, application/xml, text/xml, */*',
-            'Accept-Encoding': 'gzip, deflate, br, zstd',
-            'Accept-Language': 'en-US;q=0.8,en;q=0.7',
-            'Connection': 'keep-alive',
-            'Host': 'steamcommunity.com',
-            'Referer': f'{Urls.MARKET}',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'same-origin',
-            'User-Agent': (
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
-                'Chrome/128.0.0.0 Safari/537.36 OPR/114.0.0.0 (Edition Yx 08)'
-            ),
-            'X-Prototype-Version': '1.7',
-            'X-Requested-With': 'XMLHttpRequest',
-        }
+    def get_sell_orders_page(self, session: requests.Session) -> requests.Response:
+        return api_request(
+            session,
+            "GET",
+            f"{Urls.MARKET}/mylistings/render/?query=&start=0&count=-1",
+            headers={
+                "Referer": Urls.MARKET,
+            },
+            logger=self.logger
+        )
 
-        response = session.get(url, headers=headers)
-
-        if response.status_code != 200 and not is_check_connection:
-            self.logger.error(
-                f"Ошибка при получении страницы sell orders: "
-                f"{response.status_code} {response.reason}")
-            if response.status_code == 429:
-                raise TooManyRequestsError()
-
-        return response
-
-    @handle_status_codes_using_attempts()
     @rate_limited(6)
-    @refresh_cookies()
     def _get_buy_orders_page(self, session: requests.Session) -> requests.Response:
-        url = f"{Urls.MARKET}"
-        headers = {
-            'Referer': url,
-            'User-Agent': (
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
-                'Chrome/128.0.0.0 Safari/537.36 OPR/114.0.0.0 (Edition Yx 08)'
-            ),
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,'
-                      '*/*;q=0.8,application/signed-exchange;v=b3;q=0.7'
-        }
+        return api_request(
+            session,
+            "GET",
+            Urls.MARKET,
+            headers={
+                "Referer": Urls.MARKET
+            },
+            logger=self.logger
+        )
 
-        response = session.get(url, headers=headers, cookies=session.cookies)
-
-        if response.status_code != 200:
-            self.logger.error(
-                f"Ошибка при получении страницы маркета всех бай ордеров: "
-                f"{response.status_code} {response.reason}")
-            if response.status_code == 429:
-                raise TooManyRequestsError()
-
-        return response
-
-    def _get_item_app_id_sell_order(self, element: bs4.element.Tag) -> int:
+    @staticmethod
+    def _get_item_app_id_sell_order(element: bs4.element.Tag) -> int:
         remove_button_link = element.find(
             "a",
             class_="item_market_action_button item_market_action_button_edit nodisable")
         remove_button_href = remove_button_link.get("href", "")
         return int(re.search(r"RemoveMarketListing\('mylisting', '\d+', (\d+),", remove_button_href).group(1))
 
-    def _get_item_app_id_buy_order(self, element: bs4.element.Tag) -> int:
+    @staticmethod
+    def _get_item_app_id_buy_order(element: bs4.element.Tag) -> int:
         item_page_link = element.find(
             "a",
             class_="market_listing_item_name_link")
         name_href = item_page_link.get("href", "")
         return int(re.search(r"https://steamcommunity.com/market/listings/(\d+)", name_href).group(1))
 
-    def _get_item_count(self, element: bs4.element.Tag) -> int:
+    @staticmethod
+    def _get_item_count(element: bs4.element.Tag) -> int:
         market_listing_item_name_link = element.find(
             "a",
             class_="market_listing_item_name_link")

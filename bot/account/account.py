@@ -8,15 +8,14 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 from collections import defaultdict
 
-from steam_lib import refresh_cookies
 from tools.rate_limiter import rate_limited
-from utils import handle_status_codes_using_attempts
 from tools import BasicLogger
 
 from enums import Urls
 from enums import Config
 from bot.account.market_item_stats import MarketItemStats
 from bot.account.summarize_to_excel import SummarizeToExcel
+from utils.web_utils import api_request
 from utils.exceptions import TooManyRequestsError
 
 
@@ -33,29 +32,17 @@ class Account(BasicLogger):
         )
         self.excel_maker = SummarizeToExcel()
 
-    @handle_status_codes_using_attempts()
     @rate_limited(1)
-    @refresh_cookies()
     def get_account_page(self, session: requests.Session) -> requests.Response:
-        url = Urls.ACCOUNT
-        headers = {
-            'Referer': url,
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:143.0) "
-                          "Gecko/20100101 Firefox/143.0",
-            "Accept": "*/*",
-            "Accept-Language": "en-US,en;q=0.9"
-        }
-
-        response = session.get(url, headers=headers)
-
-        if response.status_code != 200:
-            self.logger.error(
-                f"Ошибка при получении страницы sell orders: "
-                f"{response.status_code} {response.reason}")
-            if response.status_code == 429:
-                raise TooManyRequestsError()
-
-        return response
+        return api_request(
+            session,
+            "GET",
+            Urls.ACCOUNT,
+            headers={
+                "Referer": Urls.ACCOUNT
+            },
+            logger=self.logger
+        )
 
     def get_account_balance(self, session: requests.Session) -> list[int] | None:
         response = self.get_account_page(session)
@@ -79,24 +66,25 @@ class Account(BasicLogger):
         return result
 
     # region Market History
-    @staticmethod
     @rate_limited(3)
-    @refresh_cookies()
-    def _get_history_page_content(session: requests.Session, count: int, start: int) -> dict:
-        url = f'{Urls.HISTORY}/render/?count={count}&start={start}'
-
-        for _ in range(4):
-            page = session.get(url)
-            if page.status_code == 200:
+    def _get_history_page_content(self, session: requests.Session, count: int, start: int, max_attempts: int = 4) -> dict:
+        for _ in range(max_attempts):
+            try:
+                page = api_request(
+                    session,
+                    "GET",
+                    f"{Urls.HISTORY}/render/?count={count}&start={start}",
+                    logger=self.logger
+                )
                 result = json.loads(page.content)
                 if not result.get("total_count", 0):
                     time.sleep(5)
                 else:
                     return result
-            else:
+            except TooManyRequestsError:
                 time.sleep(20)
 
-        raise Exception("Не удалось получить страницу market history")
+        raise RuntimeError("Не удалось получить страницу market history")
 
     @staticmethod
     def _build_hover_map(hovers: str) -> dict[str, dict[str, str]]:
@@ -294,8 +282,12 @@ class Account(BasicLogger):
     ) -> None:
         processed_count, aggregated_data, app_id_to_game_name = self._load_summarize_market_history(json_file_path)
 
-        new_processed_count, aggregated_data, app_id_to_game_name = self._collect_aggregated_market_history(
-            session, aggregated_data, app_id_to_game_name, processed_count)
+        try:
+            new_processed_count, aggregated_data, app_id_to_game_name = self._collect_aggregated_market_history(
+                session, aggregated_data, app_id_to_game_name, processed_count)
+        except RuntimeError as e:
+            print("Ошибка:", e)
+            return
 
         if new_processed_count:
             self._save_summarize_market_history(

@@ -7,10 +7,8 @@ from _root import project_root
 
 class BasicLogger:
     def __init__(self, logger_name: str, dir_specify: str, file_name: str) -> None:
-        # self.logger = logging.getLogger(f"{self.__class__.__name__}{self.app_id}")
         self.logger = logging.getLogger(f"{logger_name}")
         if not self.logger.handlers:
-            # file_path = f"{project_root}/logs/{self.app_id}/{self.__class__.__name__}.log"
             file_path = f"{project_root}/logs/{dir_specify}/{file_name}.log"
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             handler = RotatingFileHandler(
