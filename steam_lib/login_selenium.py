@@ -145,8 +145,6 @@ class LoginExecutorSelenium:
                 lambda d: any(c['name'] == 'steamLoginSecure' for c in d.get_cookies())
             )
 
-        self._get_selenium_cookies_into_requests_session(driver)
-
     def _save_last_login_time(self) -> None:
         last_login_time = int(datetime.now(timezone.utc).timestamp())
         with open(self.last_login_time_file, "w", encoding="utf-8") as f:
@@ -195,5 +193,6 @@ class LoginExecutorSelenium:
                         print("Error: login check failed")
                     if not is_logged:
                         self._fill_login_form(driver, url_login, manually)
+                self._get_selenium_cookies_into_requests_session(driver)
             except Exception as ex:
                 print(f"Error while using webdriver: {ex}")
