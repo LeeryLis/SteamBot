@@ -156,12 +156,12 @@ class LoginExecutorSelenium:
         self._selenium_login(manually)
         self._save_cookies_to_file()
 
-    def _is_time_to_refresh(self, refresh_threshold: int = datetime.timedelta(minutes=30)) -> bool:
+    def _is_time_to_refresh(self, refresh_threshold: datetime.timedelta = datetime.timedelta(minutes=30)) -> bool:
         if self.prior_expiry is None:
             return True
 
         now = int(time.time())
-        if now >= self.prior_expiry - refresh_threshold:
+        if now >= self.prior_expiry - refresh_threshold.total_seconds():
             return True
 
         return False
