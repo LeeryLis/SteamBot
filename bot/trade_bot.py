@@ -61,6 +61,9 @@ class TradeBot(BasicLogger):
         if self.price_analysis.is_buy_order_relevant(market_data, sales_per_day, buy_order, max_number_prices_used):
             return
 
+        self._cancel_buy_order(session, buy_order)
+
+    def _cancel_buy_order(self, session: requests.Session, buy_order: BuyOrderItem) -> None:
         response = self.marketplace.cancel_buy_order(session, buy_order.order_id)
         if response.status_code == 200:
             self.logger.info(
@@ -85,7 +88,9 @@ class TradeBot(BasicLogger):
         actual_buy_orders = self.marketplace_item_parser.parse_actual_buy_order_items(session)
 
         for item_name in tqdm(trade_item_names, unit="order", ncols=Config.TQDM_CONSOLE_WIDTH):
-            if self.trade_item_manager.items.get(item_name) == 0 and not actual_buy_orders.get(item_name):
+            if self.trade_item_manager.items.get(item_name) == 0:
+                if buy_order := actual_buy_orders.get(item_name):
+                    self._cancel_buy_order(session, buy_order)
                 continue
 
             response_market_data = self.marketplace.get_item_market_data(session, item_name)
