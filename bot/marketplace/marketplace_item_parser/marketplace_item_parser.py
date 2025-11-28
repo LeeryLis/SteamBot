@@ -7,7 +7,6 @@ from bs4 import BeautifulSoup
 from tools.rate_limiter import rate_limited
 from bot.marketplace.marketplace_item_parser.sell_order_item import SellOrderItem
 from bot.marketplace.marketplace_item_parser.buy_order_item import BuyOrderItem
-from utils.exceptions import TooManyRequestsError
 from enums import Urls
 from tools import BasicLogger
 from utils.web_utils import api_request

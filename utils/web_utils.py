@@ -38,7 +38,7 @@ def api_request(
             response = session.request(
                 method,
                 url,
-                headers=headers,
+                headers=final_headers,
                 params=params,
                 data=data,
                 json=json_data,
