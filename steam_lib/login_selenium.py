@@ -1,3 +1,4 @@
+import datetime
 import subprocess
 import time
 from typing import Any
@@ -45,13 +46,29 @@ class LoginExecutorSelenium:
         self.cookies_file = f"{project_root}/data/saved_session/cookies.pkl"
         self.selenium_profile_dir = f"{project_root}/data/saved_session/selenium_profile"
 
+        self._cookies_already_loaded = False
+        self.cookies_hash = None
+
     def login_or_refresh_cookies(self) -> None:
-        self._load_cookies_from_file()
+        if not self._cookies_already_loaded:
+            self._load_cookies_from_file()
+            self._cookies_already_loaded = True
         if self.prior_token is not None or self._load_prior_from_file():
             if self._is_time_to_refresh():
                 self._refresh_cookies()
         else:
             self._login()
+
+    def maybe_save_update_cookies(self) -> None:
+        new_hash = self._calc_cookie_hash()
+        if new_hash != self.cookies_hash:
+            print("Куки изменились")
+            self._save_cookies_to_file()
+            self.cookies_hash = new_hash
+
+    def _calc_cookie_hash(self) -> int:
+        data = tuple(sorted((c.name, c.value) for c in self.session.cookies))
+        return hash(data)
 
     @staticmethod
     def _parse_jwt_exp(jwt_token) -> int | None:
@@ -139,7 +156,7 @@ class LoginExecutorSelenium:
         self._selenium_login(manually)
         self._save_cookies_to_file()
 
-    def _is_time_to_refresh(self, refresh_threshold: int = 1800) -> bool:
+    def _is_time_to_refresh(self, refresh_threshold: int = datetime.timedelta(minutes=30)) -> bool:
         if self.prior_expiry is None:
             return True
 
@@ -179,9 +196,11 @@ class LoginExecutorSelenium:
         try:
             with open(self.cookies_file, 'rb') as f:
                 self.session.cookies.update(pickle.load(f))
+
+            self.cookies_hash = self._calc_cookie_hash()
+            return True
         except FileNotFoundError:
             return False
-        return True
 
     def _get_selenium_cookies_into_requests_session(self, driver) -> None:
         all_cookies_resp: dict[str, Any] = driver.execute_cdp_cmd("Network.getAllCookies", {})

@@ -32,13 +32,19 @@ class MarketplaceItemParser(BasicLogger):
 
     @rate_limited(6)
     def get_sell_orders_page(self, session: requests.Session) -> requests.Response:
+        params = {
+            "query": "",
+            "start": 0,
+            "count": -1
+        }
         return api_request(
             session,
             "GET",
-            f"{Urls.MARKET}/mylistings/render/?query=&start=0&count=-1",
+            f"{Urls.MARKET}/mylistings/render/",
             headers={
                 "Referer": Urls.MARKET,
             },
+            params=params,
             logger=self.logger
         )
 

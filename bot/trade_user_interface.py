@@ -1,3 +1,4 @@
+import functools
 import os
 import requests
 import time
@@ -34,6 +35,16 @@ class TradeUserInterface(BasicConsole):
             os.getenv('SHARED_SECRET'),
             self.session
         )
+
+    @staticmethod
+    def login_wrapper(method):
+        @functools.wraps(method)
+        def wrapper(self, *args, **kwargs):
+            self._login()
+            result = method(self, *args, **kwargs)
+            self.login_executor.maybe_save_update_cookies()
+            return result
+        return wrapper
 
     # region Автоматизация
     @command(
@@ -201,9 +212,8 @@ class TradeUserInterface(BasicConsole):
             self.console.print("---")
         return True
 
+    @login_wrapper
     def _get_sell_orders_info(self, game_name: str) -> None:
-        self._login()
-
         if trade_bot := self._get_bot(game_name):
             sell_orders = dict()
             try:
@@ -245,9 +255,8 @@ class TradeUserInterface(BasicConsole):
             self.console.print("---")
         return True
 
+    @login_wrapper
     def _get_marketable_inventory(self, game_name: str) -> None:
-        self._login()
-
         if trade_bot := self._get_bot(game_name):
             self.console.print(Text(f"---[ {game_name} ]---", style="bold green"))
             try:
@@ -266,9 +275,8 @@ class TradeUserInterface(BasicConsole):
         description="Вывести баланс кошелька Steam",
         usage="balance",
     )
+    @login_wrapper
     def get_account_balance(self) -> None:
-        self._login()
-
         account = Account()
         balance, pending, total = account.get_account_balance(self.session)
 
@@ -281,9 +289,8 @@ class TradeUserInterface(BasicConsole):
         description="Собрать историю торговой площадки",
         usage="history"
     )
+    @login_wrapper
     def summarize_market_history(self) -> None:
-        self._login()
-
         account = Account()
         account.summarize_market_history(self.session)
     # endregion
@@ -294,9 +301,8 @@ class TradeUserInterface(BasicConsole):
         description="Обновить выставленные на продажу ордера (снять нерелевантные)",
         usage="us <game>"
     )
+    @login_wrapper
     def update_sell_orders(self, game_name: str) -> bool:
-        self._login()
-
         if trade_bot := self._get_bot(game_name):
             return not handle_429_status_code(trade_bot.update_sell_orders, self.session)
         return False
@@ -306,9 +312,8 @@ class TradeUserInterface(BasicConsole):
         description="Обновить запросы на покупку (убрать нерелевантные и создать новые подходящие)",
         usage="ub <game>"
     )
+    @login_wrapper
     def update_buy_orders(self, game_name: str) -> bool:
-        self._login()
-
         if trade_bot := self._get_bot(game_name):
             result = handle_429_status_code(trade_bot.update_buy_orders, self.session)
             trade_bot.marketplace.save_cache_sales_per_day()
@@ -320,9 +325,8 @@ class TradeUserInterface(BasicConsole):
         description="Продать вещи из инвентаря",
         usage="si <game>",
     )
+    @login_wrapper
     def sell_inventory(self, game_name: str) -> bool:
-        self._login()
-
         if trade_bot := self._get_bot(game_name):
             return not handle_429_status_code(trade_bot.sell_inventory, self.session)
         return False
@@ -331,9 +335,8 @@ class TradeUserInterface(BasicConsole):
         aliases=["conf", "confirm_sell"],
         description="Подтверждение создание лотов (когда требуется мобильное подтверждение)",
     )
+    @login_wrapper
     def confirm_all_sell_orders(self) -> None:
-        self._login()
-
         ConfirmationExecutor(
             os.getenv('IDENTITY_SECRET'),
             os.getenv('STEAM_ID'),
@@ -353,9 +356,8 @@ class TradeUserInterface(BasicConsole):
             "price": (["-s"], "Продать все spiffy по заданной цене")
         }
     )
+    @login_wrapper
     def dst_cancel_sell_spiffy(self, price: float = 0, cancel: bool = False) -> bool:
-        self._login()
-
         if trade_bot := self._get_bot("dst"):
             if price != 0:
                 return not handle_429_status_code(trade_bot.dst_sell_inventory, self.session, price)
@@ -373,9 +375,8 @@ class TradeUserInterface(BasicConsole):
             "price": (["-s"], "Продать все distinguished по заданной цене")
         }
     )
+    @login_wrapper
     def dst_cancel_sell_distinguished(self, price: float = 0, cancel: bool = False) -> bool:
-        self._login()
-
         if trade_bot := self._get_bot("dst"):
             if price != 0:
                 return not handle_429_status_code(trade_bot.dst_sell_inventory, self.session, price, False)
