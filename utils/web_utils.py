@@ -53,8 +53,6 @@ def api_request(
             return response
         except (ConnectionError, ReadTimeout, Timeout, SSLError) as e:
             attempt += 1
-            logger.warning(f"Request failed (attempt {attempt}/{max_retries}) "
-                           f"for {url}: {e}. Retrying in {backoff} seconds")
             time.sleep(backoff)
 
     raise RuntimeError(f"Не удалось выполнить запрос к {url} после {max_retries} попыток")
