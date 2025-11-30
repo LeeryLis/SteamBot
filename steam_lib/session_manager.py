@@ -3,11 +3,10 @@ import time
 from typing import Optional
 
 import requests
-import pickle
-import os
 import json
 import base64
 
+from tools.file_store import FileStore, FileStoreType
 from steam_lib import LoginExecutorSelenium
 from utils.web_utils import api_request
 from enums import Urls
@@ -174,45 +173,30 @@ class SessionManager:
         return now >= expiry - refresh_threshold.total_seconds()
 
     def _save_cookies_to_file(self) -> bool:
-        dir_path = os.path.dirname(self.cookies_file)
-        if not os.path.exists(dir_path):
-            os.makedirs(dir_path)
-        try:
-            with open(self.cookies_file, 'wb') as f:
-                pickle.dump(self.session.cookies, f)
-            return True
-        except Exception as e:
-            print("Failed to save cookies:", e)
-            return False
+        file_store = FileStore.from_type(FileStoreType.PICKLE)
+        return file_store.save(self.cookies_file, self.session.cookies)
 
     def _load_cookies_from_file(self) -> bool:
-        try:
-            with open(self.cookies_file, 'rb') as f:
-                self.session.cookies.update(pickle.load(f))
-            self.cookies_hash = self._calc_cookie_hash()
-            return True
-        except FileNotFoundError:
+        file_store = FileStore.from_type(FileStoreType.PICKLE)
+        loaded_cookies = file_store.load(self.cookies_file, default=None)
+
+        if loaded_cookies is None:
             return False
+
+        self.session.cookies.update(loaded_cookies)
+        self.cookies_hash = self._calc_cookie_hash()
+        return True
 
     def _save_prior_to_file(self) -> bool:
-        dir_path = os.path.dirname(self.prior_file)
-        if not os.path.exists(dir_path):
-            os.makedirs(dir_path)
-        try:
-            with open(self.prior_file, 'wb') as f:
-                pickle.dump(self.priors, f)
-            return True
-        except Exception as e:
-            print("Failed to save prior:", e)
-            return False
+        file_store = FileStore.from_type(FileStoreType.PICKLE)
+        return file_store.save(self.prior_file, self.priors)
 
     def _load_prior_from_file(self) -> bool:
-        if not os.path.exists(self.prior_file):
+        file_store = FileStore.from_type(FileStoreType.PICKLE)
+        loaded_prior = file_store.load(self.prior_file, default=None)
+
+        if loaded_prior is None:
             return False
-        try:
-            with open(self.prior_file, 'rb') as f:
-                self.priors = pickle.load(f)
-            return True
-        except Exception as e:
-            print("Failed to load prior:", e)
-            return False
+
+        self.priors = loaded_prior
+        return True

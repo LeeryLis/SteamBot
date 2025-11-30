@@ -230,9 +230,9 @@ class SummarizeToExcel:
                 bottom = thick if r == max_row else thin
                 cell.border = Border(left=left, right=right, top=top, bottom=bottom)
 
-    def summarize_json_to_excel(self, json_path: str, excel_path: str) -> None:
-        json_path = Path(json_path)
-        excel_path = Path(excel_path)
+    def summarize_json_to_excel(self, json_path_str: str, excel_path_str: str) -> None:
+        json_path = Path(json_path_str)
+        excel_path = Path(excel_path_str)
         if not json_path.exists():
             raise FileNotFoundError(f"Файл не найден: {json_path}")
 
@@ -264,4 +264,4 @@ class SummarizeToExcel:
 
                 self._apply_table_borders(worksheet, df)
 
-        print(f"Excel сохранён: {excel_path}")
+        print(f"Excel сохранён: {excel_path_str}")

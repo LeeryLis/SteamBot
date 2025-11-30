@@ -4,12 +4,12 @@ import time
 
 import requests
 from tqdm import tqdm
-from pathlib import Path
 from bs4 import BeautifulSoup
 from collections import defaultdict
 
 from tools.rate_limiter import rate_limited
 from tools import BasicLogger
+from tools.file_store import FileStore, FileStoreType
 
 from enums import Urls
 from enums import Config
@@ -220,24 +220,26 @@ class Account(BasicLogger):
 
     @staticmethod
     def _load_summarize_market_history(file_path: str) -> (int, dict, dict):
-        file_path = Path(file_path)
         processed_count = 0
         aggregated_data = defaultdict(lambda: defaultdict(MarketItemStats))
         app_id_to_game_name = {}
-        if file_path.exists():
-            with open(file_path, "r", encoding="utf-8") as f:
-                saved = json.load(f)
-                processed_count = saved.get("processed_count", 0)
-                old_data = saved.get("aggregated_data", {})
-                app_id_to_game_name = saved.get("app_id_to_game_name", {})
-                for game_name, items in old_data.items():
-                    for item_name, stats in items.items():
-                        item_stats = aggregated_data[game_name][item_name]
-                        item_stats.item_name = stats.get("item_name", "")
-                        item_stats.total_bought = stats.get("total_bought", 0)
-                        item_stats.total_sold = stats.get("total_sold", 0)
-                        item_stats.sum_bought = stats.get("sum_bought", 0.0)
-                        item_stats.sum_sold = stats.get("sum_sold", 0.0)
+
+        file_store = FileStore.from_type(FileStoreType.JSON)
+        saved = file_store.load(file_path, default=None)
+
+        if saved:
+            processed_count = saved.get("processed_count", 0)
+            old_data = saved.get("aggregated_data", {})
+            app_id_to_game_name = saved.get("app_id_to_game_name", {})
+
+            for game_name, items in old_data.items():
+                for item_name, stats in items.items():
+                    item_stats = aggregated_data[game_name][item_name]
+                    item_stats.item_name = stats.get("item_name", "")
+                    item_stats.total_bought = stats.get("total_bought", 0)
+                    item_stats.total_sold = stats.get("total_sold", 0)
+                    item_stats.sum_bought = stats.get("sum_bought", 0.0)
+                    item_stats.sum_sold = stats.get("sum_sold", 0.0)
 
         return processed_count, aggregated_data, app_id_to_game_name
 
@@ -268,11 +270,8 @@ class Account(BasicLogger):
             "aggregated_data": serializable_data
         }
 
-        file_path = Path(file_path)
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(save_object, f, ensure_ascii=False, indent=2)
-
+        file_store = FileStore.from_type(FileStoreType.JSON)
+        file_store.save(file_path, save_object)
         print(f"Json сохранён: {file_path}. Всего записей: {save_object['processed_count']}")
 
     def summarize_market_history(
@@ -289,7 +288,7 @@ class Account(BasicLogger):
             print("Ошибка:", e)
             return
 
-        if new_processed_count:
+        if new_processed_count - processed_count > 0:
             self._save_summarize_market_history(
                 json_file_path, aggregated_data, app_id_to_game_name, new_processed_count)
         self.excel_maker.summarize_json_to_excel(json_file_path, excel_file_path)
