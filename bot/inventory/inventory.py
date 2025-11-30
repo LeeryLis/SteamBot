@@ -26,27 +26,34 @@ class Inventory(BasicLogger):
 
     @rate_limited(2)
     def get_inventory_page(
-            self, session: requests.Session, count: int, start_asset_id: str = None
+            self, session: requests.Session, count: int, start_asset_id: str = None,
+            max_attempts: int = 10
     ) -> requests.Response:
         params = {
             "l": "english",
             "count": count,  # Максимальное количество предметов за один запрос
             "start_assetid": start_asset_id  # Последний полученный id при последовательном получении большого инвентаря
         }
-        return api_request(
-            session,
-            "GET",
-            f"{Urls.INVENTORY}/{os.getenv('STEAM_ID')}/{self.app_id}/{self.context_id}",
-            params=params,
-            logger=self.logger
-        )
+        result = None
+        for attempt in range(max_attempts):
+            result = api_request(
+                session,
+                "GET",
+                f"{Urls.INVENTORY}/{os.getenv('STEAM_ID')}/{self.app_id}/{self.context_id}",
+                params=params,
+                logger=self.logger
+            )
+            if result.status_code == 200 or result.status_code != 500:
+                return result
+
+        return result
 
     def get_inventory(self, session: requests.Session, count_const: int = 1000) -> list[requests.Response] | None:
         result = []
         last_assetid = None
         while True:
             response = self.get_inventory_page(session, count_const, last_assetid)
-            if response.status_code != 200:
+            if response is None or response.status_code != 200:
                 return None
             result.append(response)
 
