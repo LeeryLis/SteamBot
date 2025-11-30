@@ -13,7 +13,7 @@ from bot import TradeBot
 from bot.marketplace import SellOrderItem
 from bot.account import Account
 
-from steam_lib.login_selenium import LoginExecutorSelenium
+from steam_lib import SessionManager
 from steam_lib.guard import ConfirmationExecutor, ConfirmationType
 from tools.file_managers import GameIDManager
 from tools.console import BasicConsole, command
@@ -29,7 +29,7 @@ class TradeUserInterface(BasicConsole):
         self.session: requests.Session = requests.Session()
         self.console = Console()
         load_dotenv()
-        self.login_executor = LoginExecutorSelenium(
+        self.session_manager = SessionManager(
             os.getenv('USER_NAME'),
             os.getenv('PASSWORD'),
             os.getenv('SHARED_SECRET'),
@@ -42,7 +42,7 @@ class TradeUserInterface(BasicConsole):
         def wrapper(self, *args, **kwargs):
             self._login()
             result = method(self, *args, **kwargs)
-            self.login_executor.maybe_save_update_cookies()
+            self.session_manager.maybe_save_update_cookies()
             return result
         return wrapper
 
@@ -158,7 +158,7 @@ class TradeUserInterface(BasicConsole):
     )
     def _login(self) -> None:
         try:
-            self.login_executor.login_or_refresh_cookies()
+            self.session_manager.ensure_session()
         except Exception as e:
             self.console.print(Text(f"Error: {e}. Steam login failed"))
             return
