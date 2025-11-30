@@ -1,4 +1,3 @@
-import os
 from typing import Iterable
 import enum
 from typing import NamedTuple

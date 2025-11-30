@@ -1,7 +1,6 @@
 from inspect import Parameter, signature
 from typing import get_origin, get_args, Collection, Any, Callable
 from rich.console import Console
-from rich.text import Text
 
 from tools import escape_brackets
 

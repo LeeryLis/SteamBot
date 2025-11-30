@@ -67,7 +67,8 @@ class Account(BasicLogger):
 
     # region Market History
     @rate_limited(3)
-    def _get_history_page_content(self, session: requests.Session, count: int, start: int, max_attempts: int = 4) -> dict:
+    def _get_history_page_content(
+            self, session: requests.Session, count: int, start: int, max_attempts: int = 4) -> dict:
         for _ in range(max_attempts):
             try:
                 page = api_request(

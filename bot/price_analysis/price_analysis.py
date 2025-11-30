@@ -11,10 +11,11 @@ from tools.file_managers import PriceAnalysisSettingsManager
 class PriceAnalysis:
     def __init__(self) -> None:
         """
-        :param self.acceptable_price_diff: допустимая доля разницы с медианной ценой
-        :param self.reduction: значение снижения цены относительно найденной цены
-        :param self.min_desired_profit: минимальный процент прибыли, ниже которого выставленный 'buy order' нужно убирать
-        :param self.desired_profit: желаемый процент прибыли, ниже которого 'buy order' не выставляется
+        :param self.acceptable_price_diff: Допустимая доля разницы с медианной ценой.
+        :param self.reduction: Значение снижения цены относительно найденной цены.
+        :param self.min_desired_profit: Минимальный процент прибыли, ниже которого
+            выставленный 'buy order' нужно убирать.
+        :param self.desired_profit: Желаемый процент прибыли, ниже которого 'buy order' не выставляется.
         """
         self.acceptable_price_diff = 0
         self.reduction = 0
@@ -45,7 +46,8 @@ class PriceAnalysis:
         self.desired_profit_low_liquidity = settings.get(
             "desired_profit_low_liquidity", settings_manager.def_desired_profit_low_liquidity)
 
-    def _find_median_price(self, market_data: dict[str, Any], my_sell_orders: list[SellOrderItem] = None,
+    @staticmethod
+    def _find_median_price(market_data: dict[str, Any], my_sell_orders: list[SellOrderItem] = None,
                            max_number_prices_used: int = 10) -> float:
         my_prices_count = None
         if my_sell_orders:
@@ -106,11 +108,13 @@ class PriceAnalysis:
             return profit >= self.min_desired_profit_low_liquidity
         return profit >= self.min_desired_profit
 
-    def _find_first_buy_order(self, market_data: dict[str, Any]) -> float:
+    @staticmethod
+    def _find_first_buy_order(market_data: dict[str, Any]) -> float:
         sell_order_graph = market_data.get('buy_order_graph')
         return sell_order_graph[0][0]
 
-    def _find_available_price_in_buy_orders(self, market_data: dict[str, Any], sales_per_day: int) -> float:
+    @staticmethod
+    def _find_available_price_in_buy_orders(market_data: dict[str, Any], sales_per_day: int) -> float:
         prev_price = 0
         for buy_order in market_data.get('buy_order_graph'):
             price = buy_order[0]

@@ -51,7 +51,7 @@ def api_request(
                 if response.status_code == 429:
                     raise TooManyRequestsError()
             return response
-        except (ConnectionError, ReadTimeout, Timeout, SSLError) as e:
+        except (ConnectionError, ReadTimeout, Timeout, SSLError):
             attempt += 1
             time.sleep(backoff)
 

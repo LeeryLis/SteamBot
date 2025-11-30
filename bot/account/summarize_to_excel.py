@@ -148,8 +148,9 @@ class SummarizeToExcel:
             # >100% and <=104%
             worksheet.conditional_formatting.add(
                 pct_range,
-                FormulaRule(formula=[f'=AND(NOT(ISBLANK({pct_col_letter}2)),{pct_col_letter}2>1,{pct_col_letter}2<=1.04)'],
-                            fill=yellow_fill, stopIfTrue=True)
+                FormulaRule(
+                    formula=[f'=AND(NOT(ISBLANK({pct_col_letter}2)),{pct_col_letter}2>1,{pct_col_letter}2<=1.04)'],
+                    fill=yellow_fill, stopIfTrue=True)
             )
             # >104%
             worksheet.conditional_formatting.add(

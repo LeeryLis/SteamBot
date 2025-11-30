@@ -129,8 +129,8 @@ class MarketplaceItemParser(BasicLogger):
                 buyer_price.get_text(strip=True).replace(",", ".").split()[0] if buyer_price else None
             )
             sell_order_items[i].seller_price = count * float(
-                seller_price.get_text(strip=True).replace(",", ".").replace("(", "").replace(")", "").split()[0] \
-                    if seller_price else None
+                seller_price.get_text(strip=True).replace(",", ".").replace("(", "").replace(")", "").split()[0]
+                if seller_price else None
             )
             sell_order_items[i].creation_date = creation_date.get_text(strip=True) if creation_date else None
 

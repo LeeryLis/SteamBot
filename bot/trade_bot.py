@@ -186,7 +186,9 @@ class TradeBot(BasicLogger):
             print("Нет выставленных предметов")
             return
 
-        with tqdm(self.marketplace_item_parser.sell_orders.keys(), unit="order", ncols=Config.TQDM_CONSOLE_WIDTH) as pbar:
+        with tqdm(
+                self.marketplace_item_parser.sell_orders.keys(), unit="order", ncols=Config.TQDM_CONSOLE_WIDTH
+        ) as pbar:
             for item_name in pbar:
                 # pbar.set_description(f"{item_name}")
                 if item_name not in self.trade_item_manager.items:
@@ -228,7 +230,8 @@ class TradeBot(BasicLogger):
     def _sell_item(
             self, session: requests.Session, item: InventoryItem, price: float, log_success: bool = True
     ) -> None:
-        for asset_id in tqdm(item.list_asset_id, desc=f"Sell '{item.name}'", unit="item", ncols=Config.TQDM_CONSOLE_WIDTH):
+        for asset_id in tqdm(
+                item.list_asset_id, desc=f"Sell '{item.name}'", unit="item", ncols=Config.TQDM_CONSOLE_WIDTH):
             response = self.marketplace.create_sell_order(
                 session,
                 os.getenv('STEAM_ID'),
