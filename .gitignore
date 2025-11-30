@@ -4,7 +4,6 @@
 .env
 
 logs/
-logs.lnk
 
 data/*
 !data/
