@@ -11,6 +11,17 @@ from openpyxl.utils import get_column_letter
 
 
 class SummarizeToExcel:
+    COLUMN_LABELS = {
+        "item_name": "Предмет",
+        "total_bought": "Куплено (количество)",
+        "total_sold": "Продано (количество)",
+        "sum_bought": "Потрачено",
+        "sum_sold": "Получено",
+        "quantity_difference": "Разница (шт.)",
+        "sum_difference": "Разница (денег)",
+        "sold_to_bought_pct": "Получено/Потрачено (%)",
+    }
+
     @staticmethod
     def _safe_sheet_name(name: str, existing: set, max_len: int = 31) -> str:
         name = name.replace(":", "")
@@ -67,8 +78,10 @@ class SummarizeToExcel:
         return df
 
     @staticmethod
-    def _calc_column_width(series: pd.Series) -> int:
-        max_len = max(series.astype(str).map(len).max() if len(series) > 0 else 0, len(series.name))
+    def _calc_column_width(series: pd.Series, display_name: str | None = None) -> int:
+        header = display_name if display_name is not None else str(series.name)
+        max_val_len = series.astype(str).map(len).max() if len(series) > 0 else 0
+        max_len = max(max_val_len, len(header))
         return min(max(14, int(max_len * 1.4) + 4), 90)
 
     def _apply_number_formats(self, worksheet: Worksheet, df: pd.DataFrame) -> None:
@@ -77,7 +90,10 @@ class SummarizeToExcel:
 
         for col_idx, col_name in enumerate(df.columns, start=1):
             col_letter = get_column_letter(col_idx)
-            width = self._calc_column_width(df[col_name])
+
+            display_name = self.COLUMN_LABELS.get(col_name, col_name)
+
+            width = self._calc_column_width(df[col_name], display_name=display_name)
             worksheet.column_dimensions[col_letter].width = width
 
             if col_name in money_cols:
@@ -173,32 +189,32 @@ class SummarizeToExcel:
             total_pct = None
 
         summary_rows = [
-            ("Total sum_bought", total_sum_bought),
-            ("Total sum_sold", total_sum_sold),
-            ("Total sum_difference", total_sum_diff),
-            ("Total sold_to_bought_pct", total_pct),
+            ("Потрачено", total_sum_bought, "money"),
+            ("Получено", total_sum_sold, "money"),
+            ("Разница", total_sum_diff, "money"),
+            ("Получено/Потрачено (%)", total_pct, "pct"),
         ]
 
-        worksheet.cell(row=1, column=start_col, value="Summary").font = Font(bold=True)
+        worksheet.cell(row=1, column=start_col, value="Итог").font = Font(bold=True)
         try:
             worksheet.merge_cells(start_row=1, start_column=start_col, end_row=1, end_column=start_col+1)
         except Exception:
             pass
 
-        for i, (label, value) in enumerate(summary_rows, start=1):
+        for i, (label, value, value_type) in enumerate(summary_rows, start=1):
             worksheet.cell(row=i+1, column=start_col, value=label)
             cell_val = worksheet.cell(row=i+1, column=start_col + 1, value=value)
-            if label.startswith("Total sum"):
-                cell_val.number_format = '#,##0.00'
+            if value is None:
+                cell_val.value = None
             else:
-                if value is None:
-                    cell_val.value = None
-                else:
+                if value_type == "money":
+                    cell_val.number_format = "#,##0.00"
+                elif value_type == "pct":
                     cell_val.number_format = '0.00%'
             cell_val.alignment = Alignment(horizontal="right")
 
-        worksheet.column_dimensions[get_column_letter(start_col)].width = 24
-        worksheet.column_dimensions[get_column_letter(start_col + 1)].width = 16
+        worksheet.column_dimensions[get_column_letter(start_col)].width = 28
+        worksheet.column_dimensions[get_column_letter(start_col + 1)].width = 18
 
         thin = Side(border_style="thin", color="000000")
         medium = Side(border_style="medium", color="000000")
@@ -250,10 +266,10 @@ class SummarizeToExcel:
             for app_id, items in games.items():
                 game_name = app_id_to_game_name.get(app_id)
                 df = self._prepare_rows_from_items(items)
+                df_export = df.rename(columns=self.COLUMN_LABELS)
 
                 sheet_name = self._safe_sheet_name(game_name, existing_sheet_names)
-                df.to_excel(writer, sheet_name=sheet_name, index=False)
-
+                df_export.to_excel(writer, sheet_name=sheet_name, index=False)
                 worksheet = writer.sheets[sheet_name]
 
                 self._apply_number_formats(worksheet, df)

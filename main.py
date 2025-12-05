@@ -37,12 +37,12 @@ class App(BasicConsole):
         else:
             self.console.print(Text(f"Игра '{game_name}' не поддерживается. Доступные: {list(available_games.keys())}"))
 
-    @command(
-        aliases=["ttim", "temp_trade_item_manager"],
-        description="Интерфейс взаимодействия с файлом предметов Steam, для которых "
-                    "не будут обновляться 'sell order'",
-        usage="ttim <game>"
-    )
+    # @command(
+    #     aliases=["ttim", "temp_trade_item_manager"],
+    #     description="Интерфейс взаимодействия с файлом предметов Steam, для которых "
+    #                 "не будут обновляться 'sell order'",
+    #     usage="ttim <game>"
+    # )
     def _run_temp_trade_item_manager(self, game_name: str) -> None:
         available_games = self._get_available_games(False)
         if game := available_games.get(game_name):
