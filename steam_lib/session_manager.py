@@ -132,8 +132,8 @@ class SessionManager:
         except ValueError:
             raise RuntimeError("second refresh returned non-json")
 
-        if response_2_json.get("result") == 1 and response_2_json.get("token"):
-            new_token = response_2_json['token']
+        if response_2_json.get("result") == 1:
+            new_token = response_2_json['token'] if response_2_json.get("token") else prior_token
             rt_expiry = response_2_json.get('rtExpiry')
             return {"token": new_token, "rtExpiry": rt_expiry, "response": response_2_json}
         else:
