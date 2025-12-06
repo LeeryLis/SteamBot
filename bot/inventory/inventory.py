@@ -1,4 +1,6 @@
 import os
+import time
+
 import requests
 
 from bot.inventory.inventory_item import InventoryItem
@@ -27,7 +29,7 @@ class Inventory(BasicLogger):
     @rate_limited(2)
     def get_inventory_page(
             self, session: requests.Session, count: int, start_asset_id: str = None,
-            max_attempts: int = 10
+            max_attempts: int = 10, sleep_time: int = 2
     ) -> requests.Response:
         params = {
             "l": "english",
@@ -45,6 +47,7 @@ class Inventory(BasicLogger):
             )
             if result.status_code == 200 or result.status_code != 500:
                 return result
+            time.sleep(sleep_time)
 
         return result
 
