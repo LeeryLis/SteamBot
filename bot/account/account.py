@@ -118,7 +118,18 @@ class Account(BasicLogger):
 
         return hover_map
 
-    def _aggregate_data(self, page_content: dict, aggregated_data: dict, app_id_to_game_name: dict) -> (dict, dict):
+    @staticmethod
+    def _get_split_name_count(item_name: str) -> (str, int):
+        parts = item_name.strip().split(maxsplit=1)
+        if parts and parts[0].isdigit():
+            count = int(parts[0])
+            base_name = parts[1].strip() if len(parts) > 1 else ""
+            return base_name, count
+        return item_name, 1
+
+    def _aggregate_data(
+            self, page_content: dict, aggregated_data: dict, app_id_to_game_name: dict, unknown_prefix: str
+    ) -> (dict, dict):
         html_content: str = page_content.get("results_html", "")
         assets: dict = page_content.get("assets", "")
         hovers: str = page_content.get("hovers", "")
@@ -135,11 +146,12 @@ class Account(BasicLogger):
 
         for row in reversed(rows):
             game_element = row.find("span", class_="market_listing_game_name")
+            item_element = row.find("span", class_="market_listing_item_name")
             price_element = row.find("span", class_="market_listing_price")
             gain_or_loss_element = row.find("div", class_="market_listing_gainorloss")
             history_row_id = row.get("id")
 
-            if not (game_element and price_element and gain_or_loss_element):
+            if not (game_element and item_element and price_element and gain_or_loss_element):
                 raise Exception("Не все элементы получены")
 
             asset: dict = hover_map[history_row_id]
@@ -155,8 +167,8 @@ class Account(BasicLogger):
 
             item_hash_name = item.get("market_hash_name")
             if not item_hash_name:
-                item_hash_name = f"unknown_{app_id}_{item_id}"
-            count = int(item.get("original_amount"))
+                item_hash_name = f"unknown_{unknown_prefix}_id={item_id}"
+            _, count = self._get_split_name_count(item_element.text.strip())
 
             item_stats = aggregated_data[app_id][item_hash_name]
             item_stats.item_name = item.get("market_name")
@@ -185,7 +197,7 @@ class Account(BasicLogger):
             app_id_to_game_name: dict,
             processed_count: int = 0,
             count_per_request: int = 500
-    ) -> (int, dict):
+    ) -> (int, dict, dict):
         page_content = self._get_history_page_content(session, 1, 0)
         total_count = page_content.get("total_count", 0)
         start_total_count = total_count
@@ -213,7 +225,8 @@ class Account(BasicLogger):
                     page_content = self._get_history_page_content(session, new_count, start)
 
                 aggregated_data, app_id_to_game_name = self._aggregate_data(
-                    page_content, aggregated_data, app_id_to_game_name)
+                    page_content, aggregated_data, app_id_to_game_name,
+                    f"start={start}_count={new_count}_total={total_count}")
 
                 pbar.update(new_count)
 
