@@ -2,11 +2,15 @@ import json
 from pathlib import Path
 from collections import OrderedDict
 from typing import Dict
+from datetime import datetime
 
 import pandas as pd
 from openpyxl.styles import Font, Border, Side, PatternFill, Alignment
 from openpyxl.formatting.rule import CellIsRule, FormulaRule
 from openpyxl.worksheet.worksheet import Worksheet
+from openpyxl.chart import LineChart, Reference
+from openpyxl.chart.axis import TextAxis
+from openpyxl.chart.marker import Marker
 from openpyxl.utils import get_column_letter
 
 
@@ -20,6 +24,16 @@ class SummarizeToExcel:
         "quantity_difference": "Разница (шт.)",
         "sum_difference": "Разница (денег)",
         "sold_to_bought_pct": "Получено/Потрачено (%)",
+    }
+
+    MONTHLY_COLUMN_LABELS = {
+        "month_str": "Месяц",
+        "total_bought": "Куплено (шт.)",
+        "total_sold": "Продано (шт.)",
+        "sum_bought": "Потрачено",
+        "sum_sold": "Получено",
+        "quantity_difference": "Разница (шт.)",
+        "sum_difference": "Разница (денег)",
     }
 
     @staticmethod
@@ -84,14 +98,14 @@ class SummarizeToExcel:
         max_len = max(max_val_len, len(header))
         return min(max(14, int(max_len * 1.4) + 4), 90)
 
-    def _apply_number_formats(self, worksheet: Worksheet, df: pd.DataFrame) -> None:
+    def _apply_number_formats(self, worksheet: Worksheet, df: pd.DataFrame, column_labels: dict[str, str]) -> None:
         money_cols = {"sum_bought", "sum_sold", "sum_difference"}
         int_cols = {"total_bought", "total_sold", "quantity_difference"}
 
         for col_idx, col_name in enumerate(df.columns, start=1):
             col_letter = get_column_letter(col_idx)
 
-            display_name = self.COLUMN_LABELS.get(col_name, col_name)
+            display_name = column_labels.get(col_name, col_name)
 
             width = self._calc_column_width(df[col_name], display_name=display_name)
             worksheet.column_dimensions[col_letter].width = width
@@ -272,7 +286,7 @@ class SummarizeToExcel:
                 df_export.to_excel(writer, sheet_name=sheet_name, index=False)
                 worksheet = writer.sheets[sheet_name]
 
-                self._apply_number_formats(worksheet, df)
+                self._apply_number_formats(worksheet, df, self.COLUMN_LABELS)
                 self._apply_header_and_freeze(worksheet, df)
                 self._apply_conditional_formatting(worksheet, df)
 
@@ -280,5 +294,183 @@ class SummarizeToExcel:
                 self._write_summary(worksheet, df, summary_start_col)
 
                 self._apply_table_borders(worksheet, df)
+
+        print(f"Excel сохранён: {excel_path_str}")
+
+    @staticmethod
+    def _parse_month_key(key: str) -> datetime:
+        return datetime.strptime(key, "%m.%Y")
+
+    @staticmethod
+    def _prepare_rows_from_months(months: Dict) -> pd.DataFrame:
+        rows = []
+
+        for month_key, stats in months.items():
+            month_dt = datetime.strptime(month_key, "%m.%Y")
+
+            rows.append({
+                "month": month_dt,
+                "month_str": month_key,
+                "total_bought": int(stats.get("total_bought", 0)),
+                "total_sold": int(stats.get("total_sold", 0)),
+                "sum_bought": round(float(stats.get("sum_bought", 0.0)), 2),
+                "sum_sold": round(float(stats.get("sum_sold", 0.0)), 2),
+                "quantity_difference": int(stats.get("quantity_difference", 0)),
+                "sum_difference": round(float(stats.get("sum_difference", 0.0)), 2),
+            })
+
+        if not rows:
+            return pd.DataFrame()
+
+        df = pd.DataFrame(rows)
+        df = df.sort_values("month").reset_index(drop=True)
+
+        cols = [
+            "month_str",
+            "total_bought",
+            "total_sold",
+            "sum_bought",
+            "sum_sold",
+            "quantity_difference",
+            "sum_difference",
+        ]
+
+        return df[cols]
+
+    @staticmethod
+    def _add_charts(worksheet, df):
+        if df.empty:
+            return
+
+        max_row = len(df) + 1
+
+        cats1 = Reference(
+            worksheet,
+            min_col=1,
+            min_row=2,
+            max_row=max_row
+        )
+
+        chart1 = LineChart()
+        chart1.title = "Динамика по месяцам"
+
+        chart1.height = 15
+        chart1.width = 30
+        chart1.legend.position = "r"
+        chart1.legend.overlay = False
+
+        chart1.x_axis = TextAxis()
+        chart1.x_axis.tickLblPos = "nextTo"
+        chart1.x_axis.majorTickMark = "out"
+        chart1.x_axis.delete = False
+
+        chart1.y_axis.delete = False
+
+        for col_name in ("sum_bought", "sum_sold"):
+            col_idx = list(df.columns).index(col_name) + 1
+            data1 = Reference(
+                worksheet,
+                min_col=col_idx,
+                min_row=1,
+                max_row=max_row
+            )
+            chart1.add_data(data1, titles_from_data=True)
+        chart1.set_categories(cats1)
+
+        for s in chart1.series:
+            s.marker = Marker(symbol="circle", size=5)
+            s.smooth = False
+
+        cats2 = Reference(
+            worksheet,
+            min_col=1,
+            min_row=2,
+            max_row=max_row
+        )
+
+        chart2 = LineChart()
+        chart2.title = "Разница по месяцам"
+        chart2.height = 15
+        chart2.width = 30
+        chart2.legend = None
+
+        chart2.x_axis = TextAxis()
+        chart2.x_axis.tickLblPos = "nextTo"
+        chart2.x_axis.majorTickMark = "out"
+        chart2.x_axis.delete = False
+
+        chart2.y_axis.delete = False
+
+        col_idx = list(df.columns).index("sum_difference") + 1
+        data2 = Reference(
+            worksheet,
+            min_col=col_idx,
+            min_row=2,
+            max_row=max_row
+        )
+        chart2.add_data(data2, titles_from_data=False)
+        chart2.set_categories(cats2)
+
+        chart2.series[0].marker = Marker(symbol="circle", size=5)
+        chart2.series[0].smooth = False
+
+        data_fake = Reference(worksheet, min_col=col_idx, min_row=2, max_row=2)
+        chart2.add_data(data_fake, titles_from_data=False)
+
+        chart_col = len(df.columns) + 3
+
+        chart1_anchor = f"{get_column_letter(chart_col)}2"
+        worksheet.add_chart(chart1, chart1_anchor)
+
+        chart2_anchor = f"{get_column_letter(chart_col)}{2 + 30}"
+        worksheet.add_chart(chart2, chart2_anchor)
+
+    @staticmethod
+    def _apply_monthly_conditional_formatting(worksheet: Worksheet, df: pd.DataFrame) -> None:
+        last_row = len(df) + 1
+
+        green_fill = PatternFill(start_color="FFDCF7DC", end_color="FFDCF7DC", fill_type="solid")
+        red_fill = PatternFill(start_color="FFF4C7C7", end_color="FFF4C7C7", fill_type="solid")
+
+        try:
+            col_idx = list(df.columns).index("sum_difference") + 1
+            col_letter = get_column_letter(col_idx)
+            cell_range = f"{col_letter}2:{col_letter}{last_row}"
+
+            worksheet.conditional_formatting.add(
+                cell_range,
+                CellIsRule(operator="greaterThanOrEqual", formula=["0"], fill=green_fill)
+            )
+            worksheet.conditional_formatting.add(
+                cell_range,
+                CellIsRule(operator="lessThan", formula=["0"], fill=red_fill)
+            )
+        except ValueError:
+            pass
+
+    def monthly_summarize_json_to_excel(self, json_path_str: str, excel_path_str: str) -> None:
+        json_path = Path(json_path_str)
+        excel_path = Path(excel_path_str)
+
+        aggregated, app_id_to_game_name = self._load_aggregated(json_path)
+
+        with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
+            used_names = set()
+
+            for app_id, months in aggregated.items():
+                game_name = app_id_to_game_name.get(app_id, app_id)
+
+                df = self._prepare_rows_from_months(months)
+                df_export = df.rename(columns=self.MONTHLY_COLUMN_LABELS)
+
+                sheet = self._safe_sheet_name(game_name, used_names)
+                df_export.to_excel(writer, sheet_name=sheet, index=False)
+                ws = writer.sheets[sheet]
+
+                self._apply_number_formats(ws, df, self.MONTHLY_COLUMN_LABELS)
+                self._apply_header_and_freeze(ws, df)
+                self._apply_monthly_conditional_formatting(ws, df)
+                self._apply_table_borders(ws, df)
+                self._add_charts(ws, df)
 
         print(f"Excel сохранён: {excel_path_str}")

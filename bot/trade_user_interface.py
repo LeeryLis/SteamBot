@@ -344,6 +344,20 @@ class TradeUserInterface(BasicConsole):
         ).allow_all_confirmations([ConfirmationType.CREATE_LISTING])
 
         self.console.print(Text("done"))
+
+    @command(
+        aliases=["buyconf"],
+        description="Подтверждение покупки (когда требуется мобильное подтверждение)",
+    )
+    @login_wrapper
+    def confirm_buy_order(self) -> None:
+        ConfirmationExecutor(
+            os.getenv('IDENTITY_SECRET'),
+            os.getenv('STEAM_ID'),
+            self.session
+        ).allow_buy_order_confirmation()
+
+        self.console.print(Text("done"))
     # endregion
 
     # region DST
