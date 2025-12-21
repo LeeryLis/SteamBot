@@ -367,18 +367,24 @@ class TradeUserInterface(BasicConsole):
         usage="spiffy <flag>",
         flags={
             "cancel": (["-c"], "Снять все spiffy с продажи"),
-            "price": (["-s"], "Продать все spiffy по заданной цене")
+            "price": (["-s"], "Продать все spiffy по заданной цене"),
+            "count": (["-cnt"], "Вывести количество spiffy в продаже")
         }
     )
     @login_wrapper
-    def dst_cancel_sell_spiffy(self, price: float = 0, cancel: bool = False) -> bool:
+    def dst_spiffy(self, price: float = 0, cancel: bool = False, count: bool = False) -> None:
         if trade_bot := self._get_bot("dst"):
             if price != 0:
-                return not handle_429_status_code(trade_bot.dst_sell_inventory, self.session, price)
+                trade_bot.dst_sell_inventory(self.session, price)
+                return
             if cancel:
-                return not handle_429_status_code(trade_bot.dst_cancel_sell_orders, self.session)
-        self.console.print(Text("Необходимо выставить флаг команды", style="red"))
-        return False
+                trade_bot.dst_cancel_sell_orders(self.session)
+                return
+            if count:
+                count = trade_bot.get_dst_count(self.session)
+                self.console.print(count)
+                return
+            self.console.print(Text("Необходимо выставить флаг команды", style="red"))
 
     @command(
         aliases=["dist"],
@@ -386,18 +392,24 @@ class TradeUserInterface(BasicConsole):
         usage="dist <flag>",
         flags={
             "cancel": (["-c"], "Снять все distinguished с продажи"),
-            "price": (["-s"], "Продать все distinguished по заданной цене")
+            "price": (["-s"], "Продать все distinguished по заданной цене"),
+            "count": (["-cnt"], "Вывести количество distinguished в продаже")
         }
     )
     @login_wrapper
-    def dst_cancel_sell_distinguished(self, price: float = 0, cancel: bool = False) -> bool:
+    def dst_distinguished(self, price: float = 0, cancel: bool = False, count: bool = False) -> None:
         if trade_bot := self._get_bot("dst"):
             if price != 0:
-                return not handle_429_status_code(trade_bot.dst_sell_inventory, self.session, price, False)
+                trade_bot.dst_sell_inventory(self.session, price, False)
+                return
             if cancel:
-                return not handle_429_status_code(trade_bot.dst_cancel_sell_orders, self.session, False)
-        self.console.print(Text("Необходимо выставить флаг команды", style="red"))
-        return False
+                trade_bot.dst_cancel_sell_orders(self.session, False)
+                return
+            if count:
+                count = trade_bot.get_dst_count(self.session, False)
+                self.console.print(count)
+                return
+            self.console.print(Text("Необходимо выставить флаг команды", style="red"))
     # endregion
 
 

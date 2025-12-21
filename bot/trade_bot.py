@@ -366,6 +366,21 @@ class TradeBot(BasicLogger):
             "BODY_YULED_COAT"
         ]
 
+    def get_dst_count(self, session: requests.Session, is_spiffy: bool = True) -> int:
+        self.marketplace_item_parser.parse_actual_sell_order_items(session)
+
+        sell_order_items = self.marketplace_item_parser.sell_orders
+        if is_spiffy:
+            return sum([
+                len(sell_order_items.get(item))
+                for item in sell_order_items.keys() if self._is_dst_spiffy(item)
+            ])
+        else:
+            return sum([
+                len(sell_order_items.get(item))
+                for item in sell_order_items.keys() if self._is_dst_distinguished(item)
+            ])
+
     def dst_cancel_sell_orders(self, session: requests.Session, is_spiffy: bool = True) -> None:
         self.marketplace_item_parser.parse_actual_sell_order_items(session)
 
