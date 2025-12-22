@@ -23,6 +23,7 @@ from tools.file_store import FileStore, FileStoreType
 
 from enums import Urls
 from enums import Config
+from bot.account.item_asset import ItemAsset
 from bot.account.market_item_stats import MarketItemStats
 from bot.account.market_month_stats import MarketMonthStats
 from bot.account.summarize_to_excel import SummarizeToExcel
@@ -101,8 +102,8 @@ class Account(BasicLogger):
         raise RuntimeError("Не удалось получить страницу market history")
 
     @staticmethod
-    def _build_hover_map(hovers: str) -> dict[str, dict[str, str]]:
-        hover_map: dict[str, dict[str, str]] = {}
+    def _build_hover_map(hovers: str) -> dict[str, ItemAsset]:
+        hover_map: dict[str, ItemAsset] = {}
 
         re_call = re.compile(
             r"CreateItemHoverFromContainer\(\s*g_rgAssets\s*,\s*"
@@ -123,11 +124,7 @@ class Account(BasicLogger):
             key = re.sub(r"_(name|image|icon|link|price|count)$", "", container, flags=re.IGNORECASE)
 
             if not hover_map.get(key):
-                hover_map[key] = {
-                    "app_id": app_id,
-                    "context_id": context_id,
-                    "item_id": item_id
-                }
+                hover_map[key] = ItemAsset(app_id, context_id, item_id)
 
         return hover_map
 
@@ -175,11 +172,8 @@ class Account(BasicLogger):
             if not (game_element and item_element and price_element and gain_or_loss_element and date_element):
                 raise Exception("Не все элементы получены")
 
-            asset: dict = hover_map[history_row_id]
-            app_id = asset.get("app_id")
-            context_id = asset["context_id"]
-            item_id = asset["item_id"]
-            item: dict = assets[app_id][context_id][item_id]
+            asset: ItemAsset = hover_map.get(history_row_id)
+            item: dict = assets[asset.AppID][asset.ContextID][asset.ItemID]
 
             game_name = game_element.text.strip()
             gain_or_loss = gain_or_loss_element.text.strip()
@@ -188,13 +182,13 @@ class Account(BasicLogger):
 
             item_hash_name = item.get("market_hash_name")
             if not item_hash_name:
-                item_hash_name = f"unknown_{unknown_prefix}_id={item_id}"
+                item_hash_name = f"unknown_{unknown_prefix}_id={asset.ItemID}"
             _, count = self._get_split_name_count(item_element.text.strip())
 
             history_date = self._parse_partial_date(date_element.text.strip())
             actual_date, date_cursor = self._get_actual_month_year(full_dates, date_cursor, history_date)
 
-            month_stats: MarketMonthStats = monthly_aggregated_data[app_id][actual_date]
+            month_stats: MarketMonthStats = monthly_aggregated_data[asset.AppID][actual_date]
             if gain_or_loss == "+":
                 month_stats.total_bought += count
                 month_stats.sum_bought = round(month_stats.sum_bought + price, 2)
@@ -204,10 +198,10 @@ class Account(BasicLogger):
             else:
                 raise Exception(f"Не найдено gain_or_loss")
 
-            item_stats: MarketItemStats = aggregated_data[app_id][item_hash_name]
+            item_stats: MarketItemStats = aggregated_data[asset.AppID][item_hash_name]
             item_stats.item_name = item.get("market_name")
             if not item_stats.item_name:
-                item_stats.item_name = f"unknown_{app_id}_{item_id}"
+                item_stats.item_name = f"unknown_{asset.AppID}_{asset.ItemID}"
             if gain_or_loss == "+":
                 item_stats.total_bought += count
                 item_stats.sum_bought = round(item_stats.sum_bought + price, 2)
@@ -217,11 +211,11 @@ class Account(BasicLogger):
             else:
                 raise Exception(f"Не найдено gain_or_loss")
 
-            if not app_id_to_game_name.get(app_id):
-                if app_id == '753':
-                    app_id_to_game_name[app_id] = "Steam"
+            if not app_id_to_game_name.get(asset.AppID):
+                if asset.AppID == '753':
+                    app_id_to_game_name[asset.AppID] = "Steam"
                 else:
-                    app_id_to_game_name[app_id] = game_name
+                    app_id_to_game_name[asset.AppID] = game_name
 
         return aggregated_data, app_id_to_game_name, date_cursor
 
@@ -454,7 +448,7 @@ class Account(BasicLogger):
             logger=self.logger
         )
 
-        if not self._able_to_continue_dates(all_dates, response.text):
+        if not self._is_able_to_continue_dates(all_dates, response.text):
             return self._get_full_wallet_history(session, all_dates)
 
         all_dates, new_dates_count = self._parse_dates(response.text, all_dates)
@@ -463,7 +457,7 @@ class Account(BasicLogger):
 
         return all_dates, new_dates_count
 
-    def _able_to_continue_dates(self, all_dates: list[date], response_html: str) -> bool:
+    def _is_able_to_continue_dates(self, all_dates: list[date], response_html: str) -> bool:
         last_date = all_dates[0]
 
         soup = BeautifulSoup(response_html, "html.parser")
@@ -592,7 +586,7 @@ class Account(BasicLogger):
                         WebDriverWait(driver, 10).until(
                             expected_conditions.presence_of_element_located((By.ID, "load_more_button"))
                         )
-                        if self._able_to_continue_dates(all_dates, driver.page_source):
+                        if self._is_able_to_continue_dates(all_dates, driver.page_source):
                             break
                     else:
                         break
