@@ -36,6 +36,17 @@ class SummarizeToExcel:
         "sum_difference": "Разница (денег)",
     }
 
+    PROFIT_COLUMN_LABELS = {
+        "item_name": "Предмет",
+        "total_profitable": "Выгодные",
+        "total_unprofitable": "Невыгодные",
+        "sum_profitable": "Сумма выгодных",
+        "sum_unprofitable": "Сумма невыгодных",
+        "quantity_difference": "Разница",
+        "sum_difference": "Разница (денег)",
+        "profit_pct": "Выгодность (%)",
+    }
+
     @staticmethod
     def _safe_sheet_name(name: str, existing: set, max_len: int = 31) -> str:
         name = name.replace(":", "")
@@ -124,6 +135,37 @@ class SummarizeToExcel:
                     cell = worksheet.cell(row=row_idx, column=col_idx)
                     if cell.value is not None:
                         if col_name == "sold_to_bought_pct" and (pd.isna(cell.value) or cell.value is None):
+                            cell.value = None
+                        else:
+                            cell.number_format = fmt
+
+    def _apply_number_formats_profit(
+            self, worksheet: Worksheet, df: pd.DataFrame, column_labels: dict[str, str]) -> None:
+        money_cols = {"sum_profitable", "sum_unprofitable", "sum_difference"}
+        int_cols = {"total_profitable", "total_unprofitable", "quantity_difference"}
+
+        for col_idx, col_name in enumerate(df.columns, start=1):
+            col_letter = get_column_letter(col_idx)
+
+            display_name = column_labels.get(col_name, col_name)
+
+            width = self._calc_column_width(df[col_name], display_name=display_name)
+            worksheet.column_dimensions[col_letter].width = width
+
+            if col_name in money_cols:
+                fmt = '#,##0.00'
+            elif col_name in int_cols:
+                fmt = '0'
+            elif col_name == "profit_pct":
+                fmt = '0.00%'
+            else:
+                fmt = None
+
+            if fmt is not None:
+                for row_idx in range(2, 2 + len(df)):
+                    cell = worksheet.cell(row=row_idx, column=col_idx)
+                    if cell.value is not None:
+                        if col_name == "profit_pct" and (pd.isna(cell.value) or cell.value is None):
                             cell.value = None
                         else:
                             cell.number_format = fmt
@@ -451,8 +493,12 @@ class SummarizeToExcel:
     def monthly_summarize_json_to_excel(self, json_path_str: str, excel_path_str: str) -> None:
         json_path = Path(json_path_str)
         excel_path = Path(excel_path_str)
+        if not json_path.exists():
+            raise FileNotFoundError(f"Файл не найден: {json_path}")
 
         aggregated, app_id_to_game_name = self._load_aggregated(json_path)
+        if not aggregated:
+            raise ValueError("В файле нет aggregated_data или он пуст.")
 
         with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
             used_names = set()
@@ -472,5 +518,125 @@ class SummarizeToExcel:
                 self._apply_monthly_conditional_formatting(ws, df)
                 self._apply_table_borders(ws, df)
                 self._add_charts(ws, df)
+
+        print(f"Excel сохранён: {excel_path_str}")
+
+    @staticmethod
+    def _prepare_rows_from_items_profit(items: Dict) -> pd.DataFrame:
+        rows = []
+        for item_hash_name, stats in items.items():
+            total_profitable = int(stats.get("total_profitable", 0))
+            total_unprofitable = int(stats.get("total_unprofitable", 0))
+            sum_profitable = round(float(stats.get("sum_profitable", 0.0)), 2)
+            sum_unprofitable = round(float(stats.get("sum_unprofitable", 0.0)), 2)
+
+            if total_unprofitable == 0 and total_profitable == 0:
+                continue
+
+            if total_unprofitable == 0:
+                ratio = 1
+            else:
+                ratio = total_profitable / (total_unprofitable + total_profitable)
+
+            rows.append({
+                "item_name": stats.get("item_name"),
+                "total_profitable": total_profitable,
+                "total_unprofitable": total_unprofitable,
+                "sum_profitable": sum_profitable,
+                "sum_unprofitable": sum_unprofitable,
+                "quantity_difference": int(stats.get("quantity_difference", 0)),
+                "sum_difference": round(float(stats.get("sum_difference", 0.0)), 2),
+                "profit_pct": ratio,
+            })
+
+        cols = ["item_name", "total_profitable", "total_unprofitable", "sum_profitable", "sum_unprofitable",
+                "quantity_difference", "sum_difference", "profit_pct"]
+
+        if not rows:
+            return pd.DataFrame(columns=cols)
+        df = pd.DataFrame(rows)[cols]
+        df = df.sort_values("item_name").reset_index(drop=True)
+        return df
+
+    @staticmethod
+    def _apply_conditional_formatting_profit(worksheet: Worksheet, df: pd.DataFrame) -> None:
+        last_row = len(df) + 1
+
+        red_fill = PatternFill(start_color="FFF4C7C7", end_color="FFF4C7C7", fill_type="solid")
+        green_fill = PatternFill(start_color="FFDCF7DC", end_color="FFDCF7DC", fill_type="solid")
+        yellow_fill = PatternFill(start_color="FFFFFFCC", end_color="FFFFFFCC", fill_type="solid")
+
+        try:
+            sd_col_idx = list(df.columns).index("sum_difference") + 1
+            sd_col_letter = get_column_letter(sd_col_idx)
+            sd_range = f"{sd_col_letter}2:{sd_col_letter}{last_row}"
+            worksheet.conditional_formatting.add(
+                sd_range,
+                CellIsRule(operator='lessThanOrEqual', formula=['0'], stopIfTrue=True, fill=red_fill)
+            )
+            worksheet.conditional_formatting.add(
+                sd_range,
+                CellIsRule(operator='greaterThan', formula=['0'], stopIfTrue=True, fill=green_fill)
+            )
+        except (ValueError, TypeError):
+            pass
+
+        try:
+            pct_col_idx = list(df.columns).index("profit_pct") + 1
+            pct_col_letter = get_column_letter(pct_col_idx)
+            pct_range = f"{pct_col_letter}2:{pct_col_letter}{last_row}"
+
+            # <75%
+            worksheet.conditional_formatting.add(
+                pct_range,
+                FormulaRule(formula=[f'=AND(NOT(ISBLANK({pct_col_letter}2)),{pct_col_letter}2<0.75)'],
+                            fill=red_fill, stopIfTrue=True)
+            )
+            # >=75% and <90%
+            worksheet.conditional_formatting.add(
+                pct_range,
+                FormulaRule(
+                    formula=[f'=AND(NOT(ISBLANK({pct_col_letter}2)),{pct_col_letter}2>=0.75,{pct_col_letter}2<0.9)'],
+                    fill=yellow_fill, stopIfTrue=True)
+            )
+            # >=90%
+            worksheet.conditional_formatting.add(
+                pct_range,
+                FormulaRule(formula=[f'=AND(NOT(ISBLANK({pct_col_letter}2)),{pct_col_letter}2>=0.9)'],
+                            fill=green_fill)
+            )
+        except (ValueError, TypeError):
+            pass
+
+    def profit_summarize_json_to_excel(self, json_path_str: str, excel_path_str: str) -> None:
+        json_path = Path(json_path_str)
+        excel_path = Path(excel_path_str)
+        if not json_path.exists():
+            raise FileNotFoundError(f"Файл не найден: {json_path}")
+
+        aggregated, app_id_to_game_name = self._load_aggregated(json_path)
+        if not aggregated:
+            raise ValueError("В файле нет aggregated_data или он пуст.")
+
+        games = OrderedDict(sorted(aggregated.items(), key=lambda kv: kv[0].lower()))
+        excel_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with pd.ExcelWriter(excel_path, engine="openpyxl", date_format="YYYY-MM-DD") as writer:
+            existing_sheet_names = set()
+
+            for app_id, items in games.items():
+                game_name = app_id_to_game_name.get(app_id)
+                df = self._prepare_rows_from_items_profit(items)
+                df_export = df.rename(columns=self.PROFIT_COLUMN_LABELS)
+
+                sheet_name = self._safe_sheet_name(game_name, existing_sheet_names)
+                df_export.to_excel(writer, sheet_name=sheet_name, index=False)
+                worksheet = writer.sheets[sheet_name]
+
+                self._apply_number_formats_profit(worksheet, df, self.PROFIT_COLUMN_LABELS)
+                self._apply_header_and_freeze(worksheet, df)
+                self._apply_conditional_formatting_profit(worksheet, df)
+
+                self._apply_table_borders(worksheet, df)
 
         print(f"Excel сохранён: {excel_path_str}")

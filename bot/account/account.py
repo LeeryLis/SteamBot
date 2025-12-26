@@ -26,6 +26,7 @@ from enums import Config
 from bot.account.item_asset import ItemAsset
 from bot.account.market_item_stats import MarketItemStats
 from bot.account.market_month_stats import MarketMonthStats
+from bot.account.market_item_profit_stats import MarketItemProfitStats
 from bot.account.summarize_to_excel import SummarizeToExcel
 from utils.web_utils import api_request
 from utils.exceptions import TooManyRequestsError
@@ -44,7 +45,7 @@ class Account(BasicLogger):
         )
         self.excel_maker = SummarizeToExcel()
 
-        self.dates_file_path = "data/market_history/detailed/dates.json"
+        self.dates_file_path = "data/market_history/json/dates.json"
 
     @rate_limited(1)
     def get_account_page(self, session: requests.Session) -> requests.Response:
@@ -142,11 +143,8 @@ class Account(BasicLogger):
             page_content: dict,
             aggregated_data: dict,
             app_id_to_game_name: dict,
-            unknown_prefix: str,
-            monthly_aggregated_data: dict,
-            full_dates: list[date],
-            date_cursor: int
-    ) -> (dict, dict, int):
+            unknown_prefix: str
+    ) -> None:
         html_content: str = page_content.get("results_html", "")
         assets: dict = page_content.get("assets", "")
         hovers: str = page_content.get("hovers", "")
@@ -185,6 +183,67 @@ class Account(BasicLogger):
                 item_hash_name = f"unknown_{unknown_prefix}_id={asset.ItemID}"
             _, count = self._get_split_name_count(item_element.text.strip())
 
+            item_stats: MarketItemStats = aggregated_data[asset.AppID][item_hash_name]
+            item_stats.item_name = item.get("market_name")
+            if not item_stats.item_name:
+                item_stats.item_name = item_hash_name
+            if gain_or_loss == "+":
+                item_stats.total_bought += count
+                item_stats.sum_bought = round(item_stats.sum_bought + price, 2)
+            elif gain_or_loss == "-":
+                item_stats.total_sold += count
+                item_stats.sum_sold = round(item_stats.sum_sold + price, 2)
+            else:
+                raise Exception(f"Не найдено gain_or_loss")
+
+            if not app_id_to_game_name.get(asset.AppID):
+                if asset.AppID == 753:
+                    app_id_to_game_name[asset.AppID] = "Steam"
+                else:
+                    app_id_to_game_name[asset.AppID] = game_name
+
+    def _aggregate_monthly_data(
+            self,
+            page_content: dict,
+            monthly_aggregated_data: dict,
+            app_id_to_game_name: dict,
+            full_dates: list[date],
+            date_cursor: int
+    ) -> int:
+        html_content: str = page_content.get("results_html", "")
+        assets: dict = page_content.get("assets", "")
+        hovers: str = page_content.get("hovers", "")
+
+        if not (html_content and assets and hovers):
+            raise Exception("Не получены элементы страницы истории")
+
+        hover_map = self._build_hover_map(hovers)
+
+        document = BeautifulSoup(html_content, 'html.parser')
+        rows = document.find_all("div", class_="market_listing_row")
+        if not rows:
+            raise Exception("Не получены элементы market history")
+
+        for row in reversed(rows):
+            game_element = row.find("span", class_="market_listing_game_name")
+            item_element = row.find("span", class_="market_listing_item_name")
+            price_element = row.find("span", class_="market_listing_price")
+            gain_or_loss_element = row.find("div", class_="market_listing_gainorloss")
+            date_element = row.find("div", class_="market_listing_listed_date")
+            history_row_id = row.get("id")
+
+            if not (game_element and item_element and price_element and gain_or_loss_element and date_element):
+                raise Exception("Не все элементы получены")
+
+            asset: ItemAsset = hover_map.get(history_row_id)
+
+            game_name = game_element.text.strip()
+            gain_or_loss = gain_or_loss_element.text.strip()
+            price_text = price_element.text.strip()
+            price = float(price_text.replace(",", ".").split()[0])
+
+            _, count = self._get_split_name_count(item_element.text.strip())
+
             history_date = self._parse_partial_date(date_element.text.strip())
             actual_date, date_cursor = self._get_actual_month_year(full_dates, date_cursor, history_date)
 
@@ -198,44 +257,107 @@ class Account(BasicLogger):
             else:
                 raise Exception(f"Не найдено gain_or_loss")
 
-            item_stats: MarketItemStats = aggregated_data[asset.AppID][item_hash_name]
-            item_stats.item_name = item.get("market_name")
-            if not item_stats.item_name:
-                item_stats.item_name = f"unknown_{asset.AppID}_{asset.ItemID}"
-            if gain_or_loss == "+":
-                item_stats.total_bought += count
-                item_stats.sum_bought = round(item_stats.sum_bought + price, 2)
-            elif gain_or_loss == "-":
-                item_stats.total_sold += count
-                item_stats.sum_sold = round(item_stats.sum_sold + price, 2)
-            else:
-                raise Exception(f"Не найдено gain_or_loss")
-
             if not app_id_to_game_name.get(asset.AppID):
-                if asset.AppID == '753':
+                if asset.AppID == 753:
                     app_id_to_game_name[asset.AppID] = "Steam"
                 else:
                     app_id_to_game_name[asset.AppID] = game_name
 
-        return aggregated_data, app_id_to_game_name, date_cursor
+        return date_cursor
+
+    def _aggregate_profit_data(
+            self,
+            page_content: dict,
+            profit_aggregated_data: dict,
+            app_id_to_game_name: dict,
+            unknown_prefix: str
+    ) -> None:
+        html_content: str = page_content.get("results_html", "")
+        assets: dict = page_content.get("assets", "")
+        hovers: str = page_content.get("hovers", "")
+
+        if not (html_content and assets and hovers):
+            raise Exception("Не получены элементы страницы истории")
+
+        hover_map = self._build_hover_map(hovers)
+
+        document = BeautifulSoup(html_content, 'html.parser')
+        rows = document.find_all("div", class_="market_listing_row")
+        if not rows:
+            raise Exception("Не получены элементы market history")
+
+        for row in reversed(rows):
+            game_element = row.find("span", class_="market_listing_game_name")
+            item_element = row.find("span", class_="market_listing_item_name")
+            price_element = row.find("span", class_="market_listing_price")
+            gain_or_loss_element = row.find("div", class_="market_listing_gainorloss")
+            date_element = row.find("div", class_="market_listing_listed_date")
+            history_row_id = row.get("id")
+
+            if not (game_element and item_element and price_element and gain_or_loss_element and date_element):
+                raise Exception("Не все элементы получены")
+
+            asset: ItemAsset = hover_map.get(history_row_id)
+            item: dict = assets[asset.AppID][asset.ContextID][asset.ItemID]
+
+            game_name = game_element.text.strip()
+            gain_or_loss = gain_or_loss_element.text.strip()
+            price_text = price_element.text.strip()
+            price = float(price_text.replace(",", ".").split()[0])
+
+            item_hash_name = item.get("market_hash_name")
+            if not item_hash_name:
+                item_hash_name = f"unknown_{unknown_prefix}_id={asset.ItemID}"
+            _, count = self._get_split_name_count(item_element.text.strip())
+
+            item_profit_stats: MarketItemProfitStats = profit_aggregated_data[asset.AppID][item_hash_name]
+            item_profit_stats.item_name = item.get("market_name")
+            if not item_profit_stats.item_name:
+                item_profit_stats.item_name = item_hash_name
+            if gain_or_loss == "+":
+                item_profit_stats.bought_queue.append((price, count))
+            elif gain_or_loss == "-":
+                if len(item_profit_stats.bought_queue) > 0:
+                    bought_price, bought_count = item_profit_stats.bought_queue.pop(0)
+                    price_dif = round(price - bought_price, 2)
+                    if bought_count != count:
+                        new_bought_price = round(bought_price * (bought_count - count) / bought_count, 2)
+                        new_bought_count = bought_count - count
+                        item_profit_stats.bought_queue.insert(0, (new_bought_price, new_bought_count))
+                        price_dif = round(price - bought_price * count / bought_count, 2)
+                    if price_dif > 0:
+                        item_profit_stats.sum_profitable = round(item_profit_stats.sum_profitable + price_dif, 2)
+                        item_profit_stats.total_profitable += count
+                    else:
+                        item_profit_stats.sum_unprofitable = round(item_profit_stats.sum_unprofitable + price_dif, 2)
+                        item_profit_stats.total_unprofitable += count
+            else:
+                raise Exception(f"Не найдено gain_or_loss")
+
+            if not app_id_to_game_name.get(asset.AppID):
+                if asset.AppID == 753:
+                    app_id_to_game_name[asset.AppID] = "Steam"
+                else:
+                    app_id_to_game_name[asset.AppID] = game_name
 
     def _collect_aggregated_market_history(
             self, session: requests.Session,
             aggregated_data: dict,
             app_id_to_game_name: dict,
             monthly_aggregated_data: dict,
+            profit_aggregated_data: dict,
             full_dates: list[date],
             date_cursor: int,
             processed_count: int = 0,
             count_per_request: int = 500
-    ) -> (int, dict, dict, dict):
+    ) -> int:
         page_content = self._get_history_page_content(session, 1, 0)
         total_count = page_content.get("total_count", 0)
         start_total_count = total_count
         total_new_count = total_count - processed_count
         if total_new_count <= 0:
             print("Нет новых записей для обработки")
-            return start_total_count, aggregated_data, monthly_aggregated_data, app_id_to_game_name
+            return start_total_count
 
         start = total_new_count
         with tqdm(
@@ -255,15 +377,20 @@ class Account(BasicLogger):
                     start += total_count_difference
                     page_content = self._get_history_page_content(session, new_count, start)
 
-                aggregated_data, app_id_to_game_name, date_cursor = self._aggregate_data(
-                    page_content, aggregated_data, app_id_to_game_name,
-                    f"start={start}_count={new_count}_total={total_count}",
-                    monthly_aggregated_data, full_dates, date_cursor
+                unknown_prefix = f"start={start}_count={new_count}_total={total_count}"
+                self._aggregate_data(
+                    page_content, aggregated_data, app_id_to_game_name, unknown_prefix
+                )
+                date_cursor = self._aggregate_monthly_data(
+                    page_content, monthly_aggregated_data, app_id_to_game_name, full_dates, date_cursor
+                )
+                self._aggregate_profit_data(
+                    page_content, profit_aggregated_data, app_id_to_game_name, unknown_prefix
                 )
 
                 pbar.update(new_count)
 
-        return start_total_count, aggregated_data, monthly_aggregated_data, app_id_to_game_name
+        return start_total_count
 
     @staticmethod
     def _load_summarize_market_history(file_path: str) -> (int, dict, dict):
@@ -289,6 +416,30 @@ class Account(BasicLogger):
                     item_stats.sum_sold = stats.get("sum_sold", 0.0)
 
         return processed_count, aggregated_data, app_id_to_game_name
+
+    @staticmethod
+    def _load_profit_summarize_market_history(file_path: str) -> (dict, dict):
+        aggregated_data = defaultdict(lambda: defaultdict(MarketItemProfitStats))
+        app_id_to_game_name = {}
+
+        file_store = FileStore.from_type(FileStoreType.JSON)
+        saved = file_store.load(file_path, default=None)
+
+        if saved:
+            old_data = saved.get("aggregated_data", {})
+            app_id_to_game_name = saved.get("app_id_to_game_name", {})
+
+            for game_name, items in old_data.items():
+                for item_name, stats in items.items():
+                    item_stats = aggregated_data[game_name][item_name]
+                    item_stats.item_name = stats.get("item_name", "")
+                    item_stats.total_profitable = stats.get("total_profitable", 0)
+                    item_stats.total_unprofitable = stats.get("total_unprofitable", 0)
+                    item_stats.sum_profitable = stats.get("sum_profitable", 0.0)
+                    item_stats.sum_unprofitable = stats.get("sum_unprofitable", 0.0)
+                    item_stats.bought_queue = stats.get("bought_queue", [])
+
+        return aggregated_data, app_id_to_game_name
 
     @staticmethod
     def _load_monthly_summarize_market_history(file_path: str) -> (dict, dict):
@@ -371,25 +522,57 @@ class Account(BasicLogger):
         file_store.save(file_path, save_object)
         print(f"Json сохранён: {file_path}")
 
+    @staticmethod
+    def _save_profit_summarize_market_history(
+            file_path: str,
+            aggregated_data: dict,
+            app_id_to_game_name: dict
+    ) -> None:
+        serializable_data = {}
+        for game_name, items in aggregated_data.items():
+            serializable_data[game_name] = {}
+            for item_name, stats in items.items():
+                serializable_data[game_name][item_name] = {
+                    "item_name": stats.item_name,
+                    "total_profitable": stats.total_profitable,
+                    "total_unprofitable": stats.total_unprofitable,
+                    "sum_profitable": stats.sum_profitable,
+                    "sum_unprofitable": stats.sum_unprofitable,
+                    "quantity_difference": stats.quantity_difference,
+                    "sum_difference": stats.sum_difference,
+                    "bought_queue": stats.bought_queue
+                }
+
+        save_object = {
+            "app_id_to_game_name": app_id_to_game_name,
+            "aggregated_data": serializable_data
+        }
+
+        file_store = FileStore.from_type(FileStoreType.JSON)
+        file_store.save(file_path, save_object)
+        print(f"Json сохранён: {file_path}")
+
     def summarize_market_history(
             self, session: requests.Session,
-            json_file_path: str = "data/market_history/summarize.json",
-            excel_file_path: str = "data/market_history/summarize.xlsx",
-            monthly_json_file_path: str = "data/market_history/detailed/monthly_summarize.json",
-            monthly_excel_file_path: str = "data/market_history/detailed/monthly_summarize.xlsx",
+            json_file_path: str = "data/market_history/json/summarize.json",
+            excel_file_path: str = "data/market_history/excel/summarize.xlsx",
+            monthly_json_file_path: str = "data/market_history/json/monthly_summarize.json",
+            monthly_excel_file_path: str = "data/market_history/excel/monthly_summarize.xlsx",
+            profit_json_file_path: str = "data/market_history/json/profit_summarize.json",
+            profit_excel_file_path: str = "data/market_history/excel/profit_summarize.xlsx",
     ) -> None:
         full_dates, date_cursor = self._collect_history_dates(session)
         if date_cursor > 0:
             date_cursor -= 1
         processed_count, aggregated_data, app_id_to_game_name = self._load_summarize_market_history(json_file_path)
         monthly_aggregated_data, _ = self._load_monthly_summarize_market_history(monthly_json_file_path)
+        profit_aggregated_data, _ = self._load_profit_summarize_market_history(profit_json_file_path)
 
         try:
-            new_processed_count, aggregated_data, monthly_aggregated_data, app_id_to_game_name = \
-                self._collect_aggregated_market_history(
-                    session, aggregated_data, app_id_to_game_name, monthly_aggregated_data,
-                    full_dates, date_cursor, processed_count
-                )
+            new_processed_count = self._collect_aggregated_market_history(
+                session, aggregated_data, app_id_to_game_name, monthly_aggregated_data, profit_aggregated_data,
+                full_dates, date_cursor, processed_count
+            )
         except RuntimeError as e:
             print("Ошибка:", e)
             return
@@ -399,9 +582,12 @@ class Account(BasicLogger):
                 json_file_path, aggregated_data, app_id_to_game_name, new_processed_count)
             self._save_monthly_summarize_market_history(
                 monthly_json_file_path, monthly_aggregated_data, app_id_to_game_name)
+            self._save_profit_summarize_market_history(
+                profit_json_file_path, profit_aggregated_data, app_id_to_game_name)
         try:
             self.excel_maker.summarize_json_to_excel(json_file_path, excel_file_path)
             self.excel_maker.monthly_summarize_json_to_excel(monthly_json_file_path, monthly_excel_file_path)
+            self.excel_maker.profit_summarize_json_to_excel(profit_json_file_path, profit_excel_file_path)
         except Exception as e:
             print("Ошибка:", e)
     # endregion
