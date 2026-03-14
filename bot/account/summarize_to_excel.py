@@ -348,7 +348,7 @@ class SummarizeToExcel:
         rows = []
 
         for month_key, stats in months.items():
-            month_dt = datetime.strptime(month_key, "%m.%Y")
+            month_dt = datetime.strptime(month_key, "%Y.%m")
 
             rows.append({
                 "month": month_dt,

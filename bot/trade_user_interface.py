@@ -366,7 +366,7 @@ class TradeUserInterface(BasicConsole):
         description="Работа со spiffy в DST",
         usage="spiffy <flag>",
         flags={
-            "cancel": (["-c"], "Снять все spiffy с продажи"),
+            "cancel": (["-cancel"], "Снять все spiffy с продажи"),
             "price": (["-s"], "Продать все spiffy по заданной цене"),
             "count": (["-cnt"], "Вывести количество spiffy в продаже")
         }
@@ -391,7 +391,7 @@ class TradeUserInterface(BasicConsole):
         description="Работа с distinguished в DST",
         usage="dist <flag>",
         flags={
-            "cancel": (["-c"], "Снять все distinguished с продажи"),
+            "cancel": (["-cancel"], "Снять все distinguished с продажи"),
             "price": (["-s"], "Продать все distinguished по заданной цене"),
             "count": (["-cnt"], "Вывести количество distinguished в продаже")
         }

@@ -179,7 +179,7 @@ class Account(BasicLogger):
             price = float(price_text.replace(",", ".").split()[0])
 
             item_hash_name = item.get("market_hash_name")
-            if not item_hash_name:
+            if not item_hash_name or item_hash_name == "":
                 item_hash_name = f"unknown_{unknown_prefix}_id={asset.ItemID}"
             _, count = self._get_split_name_count(item_element.text.strip())
 
@@ -306,7 +306,7 @@ class Account(BasicLogger):
             price = float(price_text.replace(",", ".").split()[0])
 
             item_hash_name = item.get("market_hash_name")
-            if not item_hash_name:
+            if not item_hash_name or item_hash_name == "":
                 item_hash_name = f"unknown_{unknown_prefix}_id={asset.ItemID}"
             _, count = self._get_split_name_count(item_element.text.strip())
 
@@ -601,7 +601,7 @@ class Account(BasicLogger):
 
     @staticmethod
     def _month_key(d: date) -> str:
-        return d.strftime("%m.%Y")
+        return d.strftime("%Y.%m")
 
     def _get_actual_month_year(self, full_dates: list[date], date_cursor: int, history_date: date) -> (date, int):
         picked_date = full_dates[date_cursor]
@@ -734,6 +734,8 @@ class Account(BasicLogger):
         driver.refresh()
 
     def _get_full_wallet_history(self, session: requests.Session, all_dates: list[date] = None) -> (list[date], int):
+        if all_dates is None:
+            print("Сбор дат всех транзакций, может потребоваться много времени")
         options = Options()
         options.add_argument("--headless=new")
         options.add_argument("--disable-gpu")
@@ -769,13 +771,13 @@ class Account(BasicLogger):
                     load_more = driver.find_element(By.ID, "load_more_button")
                     if load_more.is_displayed():
                         load_more.click()
-                        WebDriverWait(driver, 10).until(
-                            expected_conditions.presence_of_element_located((By.ID, "load_more_button"))
+                        time.sleep(0.5)
+                        WebDriverWait(driver, 30).until(
+                            expected_conditions.visibility_of_element_located((By.ID, "load_more_button"))
                         )
-                        if self._is_able_to_continue_dates(all_dates, driver.page_source):
-                            break
-                    else:
-                        break
+                        if all_dates is not None:
+                            if self._is_able_to_continue_dates(all_dates, driver.page_source):
+                                break
                 except:
                     break
 
