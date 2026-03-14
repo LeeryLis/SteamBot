@@ -7,7 +7,7 @@ class ItemAsset:
     ContextID = 0
     ItemID = 0
 
-    def __init__(self, app_id: int, context_id: int, item_id: int):
+    def __init__(self, app_id: str, context_id: str, item_id: str):
         self.AppID = app_id
         self.ContextID = context_id
         self.ItemID = item_id

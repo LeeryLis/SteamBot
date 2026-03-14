@@ -197,7 +197,7 @@ class Account(BasicLogger):
                 raise Exception(f"Не найдено gain_or_loss")
 
             if not app_id_to_game_name.get(asset.AppID):
-                if asset.AppID == 753:
+                if asset.AppID == "753":
                     app_id_to_game_name[asset.AppID] = "Steam"
                 else:
                     app_id_to_game_name[asset.AppID] = game_name
@@ -258,7 +258,7 @@ class Account(BasicLogger):
                 raise Exception(f"Не найдено gain_or_loss")
 
             if not app_id_to_game_name.get(asset.AppID):
-                if asset.AppID == 753:
+                if asset.AppID == "753":
                     app_id_to_game_name[asset.AppID] = "Steam"
                 else:
                     app_id_to_game_name[asset.AppID] = game_name
@@ -335,7 +335,7 @@ class Account(BasicLogger):
                 raise Exception(f"Не найдено gain_or_loss")
 
             if not app_id_to_game_name.get(asset.AppID):
-                if asset.AppID == 753:
+                if asset.AppID == "753":
                     app_id_to_game_name[asset.AppID] = "Steam"
                 else:
                     app_id_to_game_name[asset.AppID] = game_name
