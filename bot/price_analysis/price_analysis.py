@@ -27,6 +27,8 @@ class PriceAnalysis:
         self.min_desired_profit_low_liquidity = 0
         self.desired_profit_low_liquidity = 0
 
+        self.max_profit = 0
+
         self.change_settings()
 
     def change_settings(self) -> None:
@@ -45,6 +47,9 @@ class PriceAnalysis:
             "min_desired_profit_low_liquidity", settings_manager.def_min_desired_profit_low_liquidity)
         self.desired_profit_low_liquidity = settings.get(
             "desired_profit_low_liquidity", settings_manager.def_desired_profit_low_liquidity)
+
+        self.max_profit = settings.get(
+            "max_profit", settings_manager.def_max_profit)
 
     @staticmethod
     def _find_median_price(market_data: dict[str, Any], my_sell_orders: list[SellOrderItem] = None,
@@ -99,11 +104,14 @@ class PriceAnalysis:
         return round(recommended_price - self.reduction, 2)
 
     def is_buy_order_relevant(self, market_data: dict[str, Any], sales_per_day: int,
-                              my_buy_order: BuyOrderItem, max_number_prices_used: int = 10) -> bool:
+                              my_buy_order: BuyOrderItem, max_number_prices_used: int = 10,
+                              allow_check_max_profit: bool = True) -> bool:
         actual_sell_order_price = self.get_actual_sell_order_price(
             market_data, max_number_prices_used=max_number_prices_used)
         profit = (actual_sell_order_price * Config.WITH_COMMISSION) / my_buy_order.price - 1
 
+        if allow_check_max_profit and profit > self.max_profit:
+            return False
         if sales_per_day < self.low_liquidity_threshold:
             return profit >= self.min_desired_profit_low_liquidity
         return profit >= self.min_desired_profit
@@ -136,11 +144,17 @@ class PriceAnalysis:
             else self.desired_profit
 
         max_recommended_price = self._find_first_buy_order(market_data) + self.reduction
-        if ((actual_sell_order_price * Config.WITH_COMMISSION) / max_recommended_price - 1) >= desired_profit:
+        profit = (actual_sell_order_price * Config.WITH_COMMISSION) / max_recommended_price - 1
+        if profit >= desired_profit:
+            if profit > self.max_profit:
+                return None
             return max_recommended_price
 
         min_recommended_price = self._find_available_price_in_buy_orders(market_data, sales_per_day)
-        if ((actual_sell_order_price * Config.WITH_COMMISSION) / min_recommended_price - 1) >= desired_profit:
+        profit = (actual_sell_order_price * Config.WITH_COMMISSION) / min_recommended_price - 1
+        if profit >= desired_profit:
+            if profit > self.max_profit:
+                return None
             return min_recommended_price
 
         return None

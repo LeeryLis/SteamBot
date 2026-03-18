@@ -3,9 +3,10 @@ from rich.console import Console
 
 from tools.console import BasicConsole, command
 
-from tools.file_managers import ItemManager, TradeItemManager, GameIDManager, TempTradeItemManager
+from tools.file_managers import ItemManager, TradeItemManager, GameIDManager, \
+    TempTradeItemManager, ManualTradeItemManager
 from tools.file_managers import ConsoleGameIDManager, ConsoleItemManager,\
-    ConsoleTradeItemManager, ConsoleTempTradeItemManager
+    ConsoleTradeItemManager, ConsoleTempTradeItemManager, ConsoleManualTradeItemManager
 
 from bot import TradeUserInterface
 
@@ -49,6 +50,21 @@ class App(BasicConsole):
             ConsoleTempTradeItemManager(TempTradeItemManager(game[0])).run("TempTradeItemManager")
         else:
             self.console.print(Text(f"Игра '{game_name}' не поддерживается. Доступные: {list(available_games.keys())}"))
+
+    @command(
+        aliases=["mtim", "manual_trade_item_manager"],
+        description="Интерфейс взаимодействия с файлом предметов Steam, для которых "
+                    "не будут сниматься 'buy order' при превышении максимального профита"
+                    "(чтобы 'buy order' не застаивался)",
+        usage="mtim <game>"
+    )
+    def _run_manual_trade_item_manager(self, game_name: str) -> None:
+        available_games = self._get_available_games(False)
+        if game := available_games.get(game_name):
+            ConsoleManualTradeItemManager(ManualTradeItemManager(game[0])).run("ManualTradeItemManager")
+        else:
+            self.console.print(
+                Text(f"Игра '{game_name}' не поддерживается. Доступные: {list(available_games.keys())}"))
 
     @command(
         aliases=["games"],

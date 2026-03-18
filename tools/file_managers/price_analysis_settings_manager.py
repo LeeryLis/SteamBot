@@ -21,6 +21,8 @@ class PriceAnalysisSettingsManager:
         self.def_min_desired_profit_low_liquidity: float = 0.04
         self.def_desired_profit_low_liquidity: float = 0.07
 
+        self.def_max_profit: float = 0.3
+
         self.console = Console()
 
     def load_settings(self) -> None:
@@ -69,6 +71,11 @@ class PriceAnalysisSettingsManager:
                     f"Для низколиквидных. "
                     f"Введите желаемую долю прибыли, ниже которой НОВЫЙ 'buy order' не выставляется (def = "
                     f"{self.def_desired_profit_low_liquidity}): "))
+            max_profit = float(
+                self.console.input(
+                    f"Для низколиквидных. "
+                    f"Введите максимальную долю прибыли, выше которой СТАРЫЙ 'buy order' снимается (def = "
+                    f"{self.def_desired_profit_low_liquidity}): "))
         except ValueError:
             self.console.print(Text("Недопустимый ввод", style="red"))
             return
@@ -80,6 +87,7 @@ class PriceAnalysisSettingsManager:
         self.settings["low_liquidity_threshold"] = low_liquidity_threshold
         self.settings["min_desired_profit_low_liquidity"] = min_desired_profit_low_liquidity
         self.settings["desired_profit_low_liquidity"] = desired_profit_low_liquidity
+        self.settings["max_profit"] = max_profit
         self.save_settings()
         self.console.print("Значения сохранены")
 
@@ -91,6 +99,7 @@ class PriceAnalysisSettingsManager:
         self.settings["low_liquidity_threshold"] = self.def_low_liquidity_threshold
         self.settings["min_desired_profit_low_liquidity"] = self.def_min_desired_profit_low_liquidity
         self.settings["desired_profit_low_liquidity"] = self.def_desired_profit_low_liquidity
+        self.settings["max_profit"] = self.def_max_profit
         self.save_settings()
         self.console.print("Установлены значения по умолчанию")
 

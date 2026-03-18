@@ -8,7 +8,7 @@ from bot.inventory import Inventory, InventoryItem
 from bot.marketplace import Marketplace, SellOrderItem
 from bot.price_analysis import PriceAnalysis
 from bot.marketplace import MarketplaceItemParser, BuyOrderItem
-from tools.file_managers import TradeItemManager, TempTradeItemManager
+from tools.file_managers import TradeItemManager, TempTradeItemManager, ManualTradeItemManager
 from steam_lib.guard import ConfirmationExecutor, ConfirmationType
 from tools import BasicLogger
 
@@ -33,6 +33,7 @@ class TradeBot(BasicLogger):
         self.inventory = Inventory(self.app_id, self.context_id)
         self.trade_item_manager = TradeItemManager(self.app_id)
         self.temp_trade_item_manager = TempTradeItemManager(self.app_id)
+        self.manual_trade_item_manager = ManualTradeItemManager(self.app_id)
         self.marketplace = Marketplace(app_id, context_id, currency)
         self.price_analysis = PriceAnalysis()
 
@@ -58,7 +59,9 @@ class TradeBot(BasicLogger):
             self, session: requests.Session, buy_order: BuyOrderItem, market_data: dict[str, Any],
             sales_per_day: int) -> None:
         max_number_prices_used = sales_per_day // 2
-        if self.price_analysis.is_buy_order_relevant(market_data, sales_per_day, buy_order, max_number_prices_used):
+        allow_check_max_profit = buy_order.name not in self.manual_trade_item_manager.items
+        if self.price_analysis.is_buy_order_relevant(
+                market_data, sales_per_day, buy_order, max_number_prices_used, allow_check_max_profit):
             return
 
         self._cancel_buy_order(session, buy_order)
