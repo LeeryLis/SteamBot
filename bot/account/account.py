@@ -47,6 +47,13 @@ class Account(BasicLogger):
 
         self.dates_file_path = "data/market_history/json/dates.json"
 
+        self.json_file_path: str = "data/market_history/json/summarize.json"
+        self.excel_file_path: str = "data/market_history/excel/summarize.xlsx"
+        self.monthly_json_file_path: str = "data/market_history/json/monthly_summarize.json"
+        self.monthly_excel_file_path: str = "data/market_history/excel/monthly_summarize.xlsx"
+        self.profit_json_file_path: str = "data/market_history/json/profit_summarize.json"
+        self.profit_excel_file_path: str = "data/market_history/excel/profit_summarize.xlsx"
+
     @rate_limited(1)
     def get_account_page(self, session: requests.Session) -> requests.Response:
         return api_request(
@@ -77,6 +84,30 @@ class Account(BasicLogger):
             pass
         
         result[2] = result[0] + result[1]
+
+        return result
+
+    def get_trading_turnover(self, games: dict[str, list[int]]) -> dict[str, dict[str, float]]:
+        with open(self.json_file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        result = {}
+
+        for game_name, (game_id, _) in games.items():
+            total_bought, total_sold = 0.0, 0.0
+            game_data: dict = data.get("aggregated_data", {}).get(str(game_id), {})
+
+            for item in game_data.values():
+                total_bought += item.get("sum_bought", 0.0)
+                total_sold += item.get("sum_sold", 0.0)
+
+            profit = total_sold - total_bought
+
+            result[game_name] = {
+                "bought": round(total_bought, 2),
+                "sold": round(total_sold, 2),
+                "profit": round(profit, 2)
+            }
 
         return result
 
@@ -552,21 +583,13 @@ class Account(BasicLogger):
         file_store.save(file_path, save_object)
         print(f"Json сохранён: {file_path}")
 
-    def summarize_market_history(
-            self, session: requests.Session,
-            json_file_path: str = "data/market_history/json/summarize.json",
-            excel_file_path: str = "data/market_history/excel/summarize.xlsx",
-            monthly_json_file_path: str = "data/market_history/json/monthly_summarize.json",
-            monthly_excel_file_path: str = "data/market_history/excel/monthly_summarize.xlsx",
-            profit_json_file_path: str = "data/market_history/json/profit_summarize.json",
-            profit_excel_file_path: str = "data/market_history/excel/profit_summarize.xlsx",
-    ) -> None:
+    def summarize_market_history(self, session: requests.Session) -> None:
         full_dates, date_cursor = self._collect_history_dates(session)
         if date_cursor > 0:
             date_cursor -= 1
-        processed_count, aggregated_data, app_id_to_game_name = self._load_summarize_market_history(json_file_path)
-        monthly_aggregated_data, _ = self._load_monthly_summarize_market_history(monthly_json_file_path)
-        profit_aggregated_data, _ = self._load_profit_summarize_market_history(profit_json_file_path)
+        processed_count, aggregated_data, app_id_to_game_name = self._load_summarize_market_history(self.json_file_path)
+        monthly_aggregated_data, _ = self._load_monthly_summarize_market_history(self.monthly_json_file_path)
+        profit_aggregated_data, _ = self._load_profit_summarize_market_history(self.profit_json_file_path)
 
         try:
             new_processed_count = self._collect_aggregated_market_history(
@@ -579,15 +602,15 @@ class Account(BasicLogger):
 
         if new_processed_count - processed_count > 0:
             self._save_summarize_market_history(
-                json_file_path, aggregated_data, app_id_to_game_name, new_processed_count)
+                self.json_file_path, aggregated_data, app_id_to_game_name, new_processed_count)
             self._save_monthly_summarize_market_history(
-                monthly_json_file_path, monthly_aggregated_data, app_id_to_game_name)
+                self.monthly_json_file_path, monthly_aggregated_data, app_id_to_game_name)
             self._save_profit_summarize_market_history(
-                profit_json_file_path, profit_aggregated_data, app_id_to_game_name)
+                self.profit_json_file_path, profit_aggregated_data, app_id_to_game_name)
         try:
-            self.excel_maker.summarize_json_to_excel(json_file_path, excel_file_path)
-            self.excel_maker.monthly_summarize_json_to_excel(monthly_json_file_path, monthly_excel_file_path)
-            self.excel_maker.profit_summarize_json_to_excel(profit_json_file_path, profit_excel_file_path)
+            self.excel_maker.summarize_json_to_excel(self.json_file_path, self.excel_file_path)
+            self.excel_maker.monthly_summarize_json_to_excel(self.monthly_json_file_path, self.monthly_excel_file_path)
+            self.excel_maker.profit_summarize_json_to_excel(self.profit_json_file_path, self.profit_excel_file_path)
         except Exception as e:
             print("Ошибка:", e)
     # endregion

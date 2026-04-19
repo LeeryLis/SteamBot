@@ -60,7 +60,7 @@ class TradeUserInterface(BasicConsole):
     )
     def auto_job(
             self, iteration_duration_sec: int, game_names: list[str], frequency_update_buy_orders: int = 0) -> None:
-        if not self.validate_game_names(game_names):
+        if not self._validate_game_names(game_names):
             self.console.print(Text("Присутствуют некорректные названия игр", style="red"))
             self.console.print(Text(f"Доступные: {list(self.get_available_games().keys())}"))
             return
@@ -90,7 +90,7 @@ class TradeUserInterface(BasicConsole):
                 self.console.print(
                     f"{current_time_formatted} Выполнение заняло больше, чем {iteration_duration_sec} секунд. "
                     f"Следующая итерация начинается сразу.")
-            self.console.print(Text("---"))
+            self.console.print(Text(""))
 
     @command(
         aliases=["job"],
@@ -103,7 +103,7 @@ class TradeUserInterface(BasicConsole):
         }
     )
     def _basic_job(self, game_names: list[str], update_buy_orders: bool = False) -> bool:
-        if not self.validate_game_names(game_names):
+        if not self._validate_game_names(game_names):
             self.console.print(Text("Присутствуют некорректные названия игр", style="red"))
             self.console.print(Text(f"Доступные: {list(self.get_available_games().keys())}"))
             return False
@@ -114,18 +114,18 @@ class TradeUserInterface(BasicConsole):
             self.console.print(Text("Update sell orders", style="yellow"))
             if not self.update_sell_orders(game_name):
                 return False
-            self.console.print(Text("---"))
+            self.console.print(Text(""))
 
             self.console.print(Text("Sell inventory", style="yellow"))
             if not self.sell_inventory(game_name):
                 return False
-            self.console.print(Text("---"))
+            self.console.print(Text(""))
 
             if update_buy_orders:
                 self.console.print(Text("Update buy orders", style="yellow"))
                 if not self.update_buy_orders(game_name):
                     return False
-                self.console.print(Text("---"))
+                self.console.print(Text(""))
 
         return True
     # endregion
@@ -139,14 +139,14 @@ class TradeUserInterface(BasicConsole):
         aliases=["games"],
         description="Вывести названия всех доступных для взаимодействия игр"
     )
-    def get_available_games_names(self, print_result: bool = True) -> list[str]:
+    def get_available_game_names(self, print_result: bool = True) -> list[str]:
         result = list(self.get_available_games())
         if print_result:
             self.console.print(result)
         return result
 
-    def validate_game_names(self, game_names: Iterable[str]) -> bool:
-        available_games = set(self.get_available_games_names(False))
+    def _validate_game_names(self, game_names: Iterable[str]) -> bool:
+        available_games = set(self.get_available_game_names(False))
         return set(game_names).issubset(available_games)
     # endregion
 
@@ -202,14 +202,14 @@ class TradeUserInterface(BasicConsole):
         usage="info <game_1> [game_2] ... [game_N]",
     )
     def get_multiple_sell_orders_info(self, game_names: list[str]) -> bool:
-        if not self.validate_game_names(game_names):
+        if not self._validate_game_names(game_names):
             self.console.print(Text("Присутствуют некорректные названия игр", style="red"))
             self.console.print(Text(f"Доступные: {list(self.get_available_games().keys())}"))
             return False
 
         for game_name in game_names:
             self._get_sell_orders_info(game_name)
-            self.console.print("---")
+            self.console.print("")
         return True
 
     @login_wrapper
@@ -245,14 +245,14 @@ class TradeUserInterface(BasicConsole):
         usage="inv <game_1> [game_2] ... [game_N]",
     )
     def get_multiple_marketable_inventory(self, game_names: list[str]) -> bool:
-        if not self.validate_game_names(game_names):
+        if not self._validate_game_names(game_names):
             self.console.print(Text("Присутствуют некорректные названия игр", style="red"))
             self.console.print(Text(f"Доступные: {list(self.get_available_games().keys())}"))
             return False
 
         for game_name in game_names:
             self._get_marketable_inventory(game_name)
-            self.console.print("---")
+            self.console.print("")
         return True
 
     @login_wrapper
@@ -293,6 +293,52 @@ class TradeUserInterface(BasicConsole):
     def summarize_market_history(self) -> None:
         account = Account()
         account.summarize_market_history(self.session)
+
+    @command(
+        aliases=["summary"],
+        description="Вывести торговый оборот введённых игр на основе собранной истории "
+                    "торговой площадки (команда history)",
+        usage="summary <game_1> [game_2] ... [game_N]",
+        flags={
+            "only_total": (["-t"], "Вывести только сумму для всех введённых игр")
+        }
+    )
+    def print_trading_turnover(self, game_names: list[str], only_total: bool = False) -> bool:
+        if not self._validate_game_names(game_names):
+            self.console.print(Text("Присутствуют некорректные названия игр", style="red"))
+            self.console.print(Text(f"Доступные: {list(self.get_available_games().keys())}"))
+            return False
+
+        available_games = self.get_available_games()
+        games = {}
+        for game_name in game_names:
+            games[game_name] = available_games.get(game_name)
+
+        trading_turnover = Account().get_trading_turnover(games)
+        total_bought, total_sold = 0.0, 0.0
+        for game_name, data in trading_turnover.items():
+            bought = data.get('bought')
+            sold = data.get('sold')
+            profit = data.get('profit')
+
+            total_bought += bought
+            total_sold += sold
+
+            if not only_total:
+                self.console.print(Text(f"---[ {game_name} ]---", style="bold green"))
+                self.console.print(Text(f"Bought: {bought: ,.2f}", style="yellow2"))
+                self.console.print(Text(f"Sold: {sold: ,.2f}", style="yellow"))
+                self.console.print(Text(f"Profit: {profit: ,.2f}", style="cyan"))
+                self.console.print("")
+
+        if len(trading_turnover) > 1:
+            self.console.print(Text("TOTAL", style="bold green"))
+            self.console.print(Text(f"Bought: {round(total_bought, 2): ,.2f}", style="yellow2"))
+            self.console.print(Text(f"Sold: {round(total_sold, 2): ,.2f}", style="yellow"))
+            self.console.print(Text(f"Profit: {round(total_sold - total_bought, 2): ,.2f}", style="cyan"))
+            self.console.print("")
+
+        return True
     # endregion
 
     # region Fundamental commands
