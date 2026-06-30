@@ -36,8 +36,8 @@ class LoginExecutorSelenium:
             self, session: requests.Session, prior_urls: dict[str, str], manually: bool = False
     ) -> dict[str, tuple[Optional[str], Optional[int]]]:
         options = Options()
-        if not manually:
-            options.add_argument("--headless=new")
+        # if not manually:
+        #     options.add_argument("--headless=new")
         options.add_argument(f"--user-data-dir={self.selenium_profile_dir}")
         options.add_argument("--disable-gpu")
         options.add_argument("--disable-software-rasterizer")
@@ -127,13 +127,14 @@ class LoginExecutorSelenium:
         driver.get(url)
 
         if not manually:
-            username_input = WebDriverWait(driver, 10).until(
+            label = WebDriverWait(driver, 10).until(
                 expected_conditions.visibility_of_element_located((
                     By.XPATH,
-                    "//div[(contains(text(), 'Sign in') or contains(text(), 'Войдите'))]"
-                    "/following-sibling::input[@type='text']"
+                    "//label[contains(., 'Sign in') or contains(., 'account name')]"
                 ))
             )
+            input_id = label.get_attribute("for")
+            username_input = driver.find_element(By.ID, input_id)
             username_input.send_keys(self.username)
 
             password_input = WebDriverWait(driver, 10).until(
