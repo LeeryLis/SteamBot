@@ -9,3 +9,5 @@ data/*
 !data/
 !data/game_IDs.json
 !data/price_analysis_settings.json
+
+test/*

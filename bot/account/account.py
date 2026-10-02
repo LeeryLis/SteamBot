@@ -273,7 +273,9 @@ class Account(BasicLogger):
             price_text = price_element.text.strip()
             price = float(price_text.replace(",", ".").split()[0])
 
-            _, count = self._get_split_name_count(item_element.text.strip())
+            item_name, count = self._get_split_name_count(item_element.text.strip())
+            if item_name == "Mann Co. Supply Crate Key":
+                continue
 
             history_date = self._parse_partial_date(date_element.text.strip())
             actual_date, date_cursor = self._get_actual_month_year(full_dates, date_cursor, history_date)
