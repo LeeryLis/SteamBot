@@ -2,12 +2,18 @@ import subprocess
 import time
 from typing import Any, Optional
 
-import requests
+from curl_cffi import requests
+from curl_cffi.requests.exceptions import (
+    ConnectionError,
+    ReadTimeout,
+    RequestException,
+    CurlError,
+)
 import os
 import json
 import base64
 
-from requests.cookies import RequestsCookieJar
+from curl_cffi.requests.cookies import Cookies
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -36,8 +42,9 @@ class LoginExecutorSelenium:
             self, session: requests.Session, prior_urls: dict[str, str], manually: bool = False
     ) -> dict[str, tuple[Optional[str], Optional[int]]]:
         options = Options()
-        # if not manually:
-        #     options.add_argument("--headless=new")
+
+        if not manually:
+            options.add_argument("--headless=new")
         options.add_argument(f"--user-data-dir={self.selenium_profile_dir}")
         options.add_argument("--disable-gpu")
         options.add_argument("--disable-software-rasterizer")
@@ -93,7 +100,7 @@ class LoginExecutorSelenium:
         all_cookies_resp: dict[str, Any] = driver.execute_cdp_cmd("Network.getAllCookies", {})
         cookies = all_cookies_resp.get("cookies", [])
 
-        jar = RequestsCookieJar()
+        jar = Cookies()
         for c in cookies:
             name = c.get("name")
             value = c.get("value")
@@ -103,13 +110,7 @@ class LoginExecutorSelenium:
             http_only = bool(c.get("httpOnly", False))
             expires = c.get("expires", None)
             same_site = c.get("sameSite", None)
-            rest = {}
-            if http_only:
-                rest['HttpOnly'] = True
-            if same_site is not None:
-                rest['SameSite'] = same_site
-            if 'priority' in c:
-                rest['Priority'] = c.get('priority')
+            priority = c.get("priority", None)
 
             jar.set(
                 name=name,
@@ -117,9 +118,22 @@ class LoginExecutorSelenium:
                 domain=domain,
                 path=path,
                 secure=secure,
-                expires=expires if expires not in (0, -1) else None,
-                rest=rest
             )
+
+            for cookie in jar.jar:
+                if cookie.name == name and cookie.domain == domain and cookie.path == path:
+                    if expires not in (0, -1, None):
+                        cookie.expires = int(expires)
+                    else:
+                        cookie.expires = None
+
+                    if http_only:
+                        cookie._rest["HttpOnly"] = True
+                    if same_site is not None:
+                        cookie._rest["SameSite"] = same_site
+                    if priority is not None:
+                        cookie._rest["Priority"] = priority
+                    break
 
         session.cookies.update(jar)
 
@@ -130,7 +144,12 @@ class LoginExecutorSelenium:
             label = WebDriverWait(driver, 10).until(
                 expected_conditions.visibility_of_element_located((
                     By.XPATH,
-                    "//label[contains(., 'Sign in') or contains(., 'account name')]"
+                    "//label["
+                    "contains(., 'Sign in') or "
+                    "contains(., 'account name') or "
+                    "contains(., 'Войдите') or"
+                    "contains(., 'имя аккаунта')"
+                    "]"
                 ))
             )
             input_id = label.get_attribute("for")
@@ -180,16 +199,14 @@ class LoginExecutorSelenium:
             return None
 
     @staticmethod
-    def _is_logged(session: requests.Session, url, attempts_count: int = 3) -> (bool, bool):
+    def _is_logged(session: requests.Session, url, attempts_count: int = 3) -> tuple[bool, bool]:
         for attempt in range(attempts_count):
             try:
-                response = session.get(url, allow_redirects=False)
+                response = session.get(url, allow_redirects=False, impersonate="chrome")
                 return not (
-                    response.status_code in (301, 302)
-                    and "login" in response.headers.get("Location", "").lower()
+                        response.status_code in (301, 302)
+                        and "login" in response.headers.get("Location", "").lower()
                 ), False
-            except (requests.exceptions.ConnectionError,
-                    requests.exceptions.ReadTimeout,
-                    requests.exceptions.RequestException):
+            except (ConnectionError, ReadTimeout, RequestException, CurlError):
                 time.sleep(1)
         return False, True

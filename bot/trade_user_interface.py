@@ -1,6 +1,6 @@
 import functools
 import os
-import requests
+from curl_cffi import requests
 import time
 from datetime import datetime, timedelta
 from typing import Iterable

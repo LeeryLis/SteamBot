@@ -1,7 +1,7 @@
 import os
 import time
 
-import requests
+from curl_cffi import requests
 
 from bot.inventory.inventory_item import InventoryItem
 from tools.rate_limiter import rate_limited

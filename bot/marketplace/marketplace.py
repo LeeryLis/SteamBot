@@ -1,6 +1,6 @@
 from typing import Any
 
-import requests
+from curl_cffi import requests
 from tools import CustomTTLCache
 from urllib.parse import quote
 

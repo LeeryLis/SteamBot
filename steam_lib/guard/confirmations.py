@@ -2,7 +2,7 @@ from typing import Iterable
 import enum
 from typing import NamedTuple
 
-import requests
+from curl_cffi import requests
 import time
 
 from steam_lib.guard import generate_confirmation_key, generate_device_id

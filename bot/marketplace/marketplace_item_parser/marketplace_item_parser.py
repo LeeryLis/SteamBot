@@ -1,7 +1,7 @@
 import re
 
 import bs4.element
-import requests
+from curl_cffi import requests
 from bs4 import BeautifulSoup
 
 from tools.rate_limiter import rate_limited

@@ -5,7 +5,7 @@ import time
 import subprocess
 from datetime import datetime, date
 
-import requests
+from curl_cffi import requests
 from tqdm import tqdm
 from bs4 import BeautifulSoup
 from collections import defaultdict

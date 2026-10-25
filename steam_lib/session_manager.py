@@ -2,7 +2,7 @@ import datetime
 import time
 from typing import Optional
 
-import requests
+from curl_cffi import requests
 import json
 import base64
 
@@ -66,7 +66,7 @@ class SessionManager:
             self.cookies_hash = new_hash
 
     def _calc_cookie_hash(self) -> int:
-        data = tuple(sorted((c.name, c.value) for c in self.session.cookies))
+        data = tuple(sorted(self.session.cookies.get_dict().items()))
         return hash(data)
 
     @staticmethod
@@ -174,16 +174,53 @@ class SessionManager:
 
     def _save_cookies_to_file(self) -> bool:
         file_store = FileStore.from_type(FileStoreType.PICKLE)
-        return file_store.save(self.cookies_file, self.session.cookies)
+        data = []
+        for cookie in self.session.cookies.jar:
+            data.append({
+                "name": cookie.name,
+                "value": cookie.value,
+                "domain": cookie.domain,
+                "path": cookie.path,
+                "secure": cookie.secure,
+                "expires": cookie.expires,
+                "rest": dict(cookie._rest) if cookie._rest else {},
+            })
+        return file_store.save(self.cookies_file, data)
 
     def _load_cookies_from_file(self) -> bool:
         file_store = FileStore.from_type(FileStoreType.PICKLE)
-        loaded_cookies = file_store.load(self.cookies_file, default=None)
-
-        if loaded_cookies is None:
+        loaded = file_store.load(self.cookies_file, default=None)
+        if not loaded:
             return False
 
-        self.session.cookies.update(loaded_cookies)
+        for c in loaded:
+            name = c["name"]
+            value = c["value"]
+            domain = c.get("domain")
+            path = c.get("path", "/")
+            secure = c.get("secure", False)
+            expires = c.get("expires")
+            rest = c.get("rest") or {}
+
+            self.session.cookies.set(
+                name=name,
+                value=value,
+                domain=domain,
+                path=path,
+                secure=secure,
+            )
+
+            for cookie in self.session.cookies.jar:
+                if cookie.name == name and cookie.domain == domain and cookie.path == path:
+                    if expires is not None and expires > 0:
+                        cookie.expires = int(expires)
+                    else:
+                        cookie.expires = 0
+
+                    if rest:
+                        cookie._rest.update(rest)
+                    break
+
         self.cookies_hash = self._calc_cookie_hash()
         return True
 

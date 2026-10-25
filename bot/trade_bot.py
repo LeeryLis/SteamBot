@@ -1,7 +1,7 @@
 import os
 from typing import Any
 
-import requests
+from curl_cffi import requests
 from tqdm import tqdm
 
 from bot.inventory import Inventory, InventoryItem
