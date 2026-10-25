@@ -2,7 +2,9 @@ from typing import Iterable
 import enum
 from typing import NamedTuple
 
+import curl_cffi
 from curl_cffi import requests
+from curl_cffi.requests.exceptions import JSONDecodeError
 import time
 
 from steam_lib.guard import generate_confirmation_key, generate_device_id
@@ -97,26 +99,54 @@ class ConfirmationExecutor:
             self.CONF_URL + '/ajaxop', params=params, headers=headers)
         try:
             status = response.json()['success']
-        except requests.exceptions.JSONDecodeError:
+        except JSONDecodeError:
             status = False
         return status
 
     def respond_to_confirmations(self, confirmations: Iterable[Confirmation],
                                  cancel: bool = False) -> bool:
-        tag = ConfirmationTag.ALLOW if cancel is False\
-            else ConfirmationTag.CANCEL
+        tag = ConfirmationTag.ALLOW if cancel is False else ConfirmationTag.CANCEL
         params = self._create_confirmation_params(tag)
         params['op'] = tag
-        params['ck[]'] = [i.nonce for i in confirmations]
-        params['cid[]'] = [i.id for i in confirmations]
-        headers = {'X-Requested-With': 'XMLHttpRequest'}
-        response = self.session.post(
-            self.CONF_URL + '/multiajaxop', data=params, headers=headers)
+
+        headers = {
+            'X-Requested-With': 'com.valvesoftware.android.steam.community',
+            'Origin': SteamUrl.COMMUNITY,
+            'User-Agent': (
+                'Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 '
+                '(KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36'
+            ),
+            'Accept': '*/*',
+            'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+        }
+
+        mp = curl_cffi.CurlMime()
         try:
-            status = response.json()['success']
+            for conf in confirmations:
+                mp.addpart(
+                    name='cid[]',
+                    data=str(conf.id).encode('utf-8'),
+                    content_type='text/plain',
+                )
+                mp.addpart(
+                    name='ck[]',
+                    data=str(conf.nonce).encode('utf-8'),
+                    content_type='text/plain',
+                )
+
+            response = self.session.post(
+                self.CONF_URL + '/multiajaxop',
+                params=params,
+                multipart=mp,
+                headers=headers,
+            )
+        finally:
+            mp.close()
+
+        try:
+            return response.json()['success']
         except requests.exceptions.JSONDecodeError:
-            status = False
-        return status
+            return False
 
     def get_confirmations(self) -> list[Confirmation]:
         confirmations: list[Confirmation] = []
